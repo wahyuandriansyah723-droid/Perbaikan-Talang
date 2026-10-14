@@ -1,0 +1,6 @@
+{
+  "name": "SiTalang - Laporan Perbaikan Talang",
+  "description": "Aplikasi web laporan perbaikan talang air cepat dan ringkas dengan upload foto kerusakan, pelacakan progres real-time, perbandingan sebelum-sesudah, dan ekspor laporan kerja.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
