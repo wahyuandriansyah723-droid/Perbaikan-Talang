@@ -1,5 +1,15 @@
 import React from 'react';
-import { GutterReport, STATUS_CONFIG, GUTTER_TYPE_LABELS, DAMAGE_TYPE_LABELS, URGENCY_LABELS, SystemSettings, DEFAULT_SETTINGS } from '../types';
+import { 
+  GutterReport, 
+  STATUS_CONFIG, 
+  GUTTER_TYPE_LABELS, 
+  DAMAGE_TYPE_LABELS, 
+  URGENCY_LABELS, 
+  SystemSettings, 
+  DEFAULT_SETTINGS,
+  getGutterTypeLabel,
+  getDamageTypeLabel
+} from '../types';
 import { Printer, X, Download, ShieldCheck, Wrench, Droplets } from 'lucide-react';
 
 interface PrintReportViewProps {
@@ -40,10 +50,19 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
+              title="Unduh / Simpan sebagai file PDF"
+            >
+              <Download className="w-4 h-4" />
+              <span>Unduh PDF</span>
+            </button>
+            <button
+              onClick={handlePrint}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-colors"
+              title="Cetak langsung ke printer"
             >
               <Printer className="w-4 h-4" />
-              <span>Cetak / Simpan PDF</span>
+              <span>Cetak Dokumen</span>
             </button>
             <button
               onClick={onClose}
@@ -114,11 +133,11 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
           <div className="grid grid-cols-4 gap-2 text-xs border border-slate-200 rounded-xl p-3">
             <div>
               <span className="text-slate-400 block">Jenis Talang:</span>
-              <strong className="text-slate-800">{GUTTER_TYPE_LABELS[report.gutterType]}</strong>
+              <strong className="text-slate-800">{getGutterTypeLabel(report.gutterType, settings?.gutterTypes)}</strong>
             </div>
             <div>
               <span className="text-slate-400 block">Masalah Utama:</span>
-              <strong className="text-slate-800">{DAMAGE_TYPE_LABELS[report.damageType]}</strong>
+              <strong className="text-slate-800">{getDamageTypeLabel(report.damageType, settings?.damageTypes)}</strong>
             </div>
             <div>
               <span className="text-slate-400 block">Urgensi:</span>

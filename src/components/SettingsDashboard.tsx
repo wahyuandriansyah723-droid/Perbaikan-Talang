@@ -1,6 +1,16 @@
-import React, { useState } from 'react';
-import { SystemSettings, DEFAULT_SETTINGS, GutterReport } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  SystemSettings, 
+  DEFAULT_SETTINGS, 
+  GutterReport, 
+  STATUS_CONFIG, 
+  DEFAULT_GUTTER_TYPES, 
+  DEFAULT_DAMAGE_TYPES, 
+  MasterOptionItem 
+} from '../types';
 import { INITIAL_REPORTS } from '../data/mockData';
+import { INDONESIAN_MONTHS, filterReportsByPeriod } from '../utils/dateHelper';
+import { DeletePeriodModal } from './DeletePeriodModal';
 import { 
   Settings, 
   Building2, 
@@ -19,7 +29,13 @@ import {
   Sparkles,
   Printer,
   AlertTriangle,
-  Info
+  Info,
+  Calendar,
+  Layers,
+  Plus,
+  Wrench,
+  Tag,
+  Pencil
 } from 'lucide-react';
 
 interface SettingsDashboardProps {
@@ -28,6 +44,7 @@ interface SettingsDashboardProps {
   reports: GutterReport[];
   onRestoreReports: (restoredReports: GutterReport[]) => void;
   onResetAllData: () => void;
+  onDeleteReportsBatch?: (reportIds: string[], periodLabel: string) => Promise<void> | void;
 }
 
 export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
@@ -36,11 +53,80 @@ export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
   reports,
   onRestoreReports,
   onResetAllData,
+  onDeleteReportsBatch,
 }) => {
   const [formData, setFormData] = useState<SystemSettings>(settings);
   const [isSavedToast, setIsSavedToast] = useState(false);
-  const [activeSection, setActiveSection] = useState<'profile' | 'operational' | 'whatsapp' | 'database'>('profile');
+  const [activeSection, setActiveSection] = useState<'profile' | 'operational' | 'whatsapp' | 'database' | 'master_data'>('profile');
   const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  // Master Data Local State
+  const [gutterList, setGutterList] = useState<MasterOptionItem[]>(
+    settings.gutterTypes && settings.gutterTypes.length > 0 ? settings.gutterTypes : DEFAULT_GUTTER_TYPES
+  );
+  const [damageList, setDamageList] = useState<MasterOptionItem[]>(
+    settings.damageTypes && settings.damageTypes.length > 0 ? settings.damageTypes : DEFAULT_DAMAGE_TYPES
+  );
+  const [newGutterInput, setNewGutterInput] = useState('');
+  const [newDamageInput, setNewDamageInput] = useState('');
+  const [masterSuccessMsg, setMasterSuccessMsg] = useState('');
+
+  useEffect(() => {
+    setFormData(settings);
+    if (settings.gutterTypes && settings.gutterTypes.length > 0) {
+      setGutterList(settings.gutterTypes);
+    }
+    if (settings.damageTypes && settings.damageTypes.length > 0) {
+      setDamageList(settings.damageTypes);
+    }
+  }, [settings]);
+
+  // State for Hapus per Bulan atau per Tahun
+  const [deleteScope, setDeleteScope] = useState<'month' | 'year'>('month');
+  const [deleteSelectedYear, setDeleteSelectedYear] = useState<number>(2026);
+  const [deleteSelectedMonth, setDeleteSelectedMonth] = useState<number>(10);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
+
+  // Available years from reports or standard range
+  const availableYears = useMemo(() => {
+    const yrs = new Set<number>([2024, 2025, 2026, 2027, 2028]);
+    reports.forEach((r) => {
+      const match = r.createdAt?.match(/(\d{4})/);
+      if (match) yrs.add(Number(match[1]));
+    });
+    return Array.from(yrs).sort((a, b) => b - a);
+  }, [reports]);
+
+  // Reports matching delete period
+  const reportsMatchingDeletePeriod = useMemo(() => {
+    return filterReportsByPeriod(
+      reports,
+      deleteScope,
+      '',
+      deleteSelectedMonth,
+      deleteSelectedYear
+    );
+  }, [reports, deleteScope, deleteSelectedMonth, deleteSelectedYear]);
+
+  const deletePeriodLabel = deleteScope === 'month'
+    ? `${INDONESIAN_MONTHS[deleteSelectedMonth - 1]} ${deleteSelectedYear}`
+    : `Tahun ${deleteSelectedYear}`;
+
+  const handleExecuteBatchDelete = async () => {
+    const ids = reportsMatchingDeletePeriod.map((r) => r.id);
+    if (ids.length === 0) return;
+
+    if (onDeleteReportsBatch) {
+      await onDeleteReportsBatch(ids, deletePeriodLabel);
+    } else {
+      // Fallback: restore remaining reports
+      const remaining = reports.filter((r) => !ids.includes(r.id));
+      onRestoreReports(remaining);
+    }
+    setDeleteSuccessMessage(`Berhasil menghapus ${ids.length} laporan periode ${deletePeriodLabel}.`);
+    setTimeout(() => setDeleteSuccessMessage(null), 4000);
+  };
 
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -192,6 +278,23 @@ export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
               <p className="text-xs font-bold">Template WhatsApp & Notifikasi</p>
               <p className={`text-[11px] ${activeSection === 'whatsapp' ? 'text-blue-100' : 'text-slate-400'}`}>
                 Format pesan klien & live timer
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setActiveSection('master_data')}
+            className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center gap-3 ${
+              activeSection === 'master_data'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Tag className={`w-5 h-5 ${activeSection === 'master_data' ? 'text-white' : 'text-blue-600'}`} />
+            <div>
+              <p className="text-xs font-bold">Master Material & Kerusakan</p>
+              <p className={`text-[11px] ${activeSection === 'master_data' ? 'text-blue-100' : 'text-slate-400'}`}>
+                Edit & tambah opsi talang
               </p>
             </div>
           </button>
@@ -521,18 +624,18 @@ export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
                     {reports.length} Data Tiket
                   </div>
                   <span className="text-[11px] text-slate-500">
-                    Tersimpan aman di penyimpanan lokal peramban (LocalStorage).
+                    Tersinkronisasi real-time di database cloud Firebase Firestore.
                   </span>
                 </div>
 
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <span className="text-slate-400 text-xs block mb-1">Status Keamanan:</span>
+                  <span className="text-slate-400 text-xs block mb-1">Status Sinkronisasi Cloud:</span>
                   <div className="text-base font-bold text-emerald-600 flex items-center gap-1.5 mt-1">
                     <ShieldCheck className="w-5 h-5" />
-                    <span>Database Siap Dicadangkan</span>
+                    <span>Firebase Firestore Online</span>
                   </div>
                   <span className="text-[11px] text-slate-500 block mt-1">
-                    Bisa diunduh dan dipulihkan kapan saja tanpa batas.
+                    Tersinkron ke seluruh HP, laptop, dan perangkat pengguna secara langsung.
                   </span>
                 </div>
               </div>
@@ -583,6 +686,147 @@ export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
                 </div>
               </div>
 
+              {/* SECTION 4.1: HAPUS LAPORAN PER BULAN ATAU PER TAHUN */}
+              <div className="p-5 rounded-3xl border border-rose-200/90 bg-rose-50/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-200/60 pb-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="p-1 bg-rose-100 text-rose-700 rounded-lg">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
+                      <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider">
+                        Pembersihan Data: Hapus per Bulan atau per Tahun
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Pilih periode waktu spesifik untuk menghapus seluruh laporan kerusakan talang air pada bulan atau tahun tersebut dari database online Firebase Firestore.
+                    </p>
+                  </div>
+
+                  {deleteSuccessMessage && (
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-300 flex items-center gap-1.5 animate-pulse shrink-0">
+                      <Check className="w-4 h-4 text-emerald-700" />
+                      <span>{deleteSuccessMessage}</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Filter Controls: Scope (Month / Year), Month Selector, Year Selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-rose-200 shadow-2xs">
+                  {/* Scope Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Mode Hapus Periode:</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteScope('month')}
+                        className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                          deleteScope === 'month'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Per Bulan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteScope('year')}
+                        className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                          deleteScope === 'year'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Per Tahun
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Year Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Pilih Tahun:</span>
+                    </label>
+                    <select
+                      value={deleteSelectedYear}
+                      onChange={(e) => setDeleteSelectedYear(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 font-mono"
+                    >
+                      {availableYears.map((yr) => (
+                        <option key={yr} value={yr}>
+                          Tahun {yr}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Month Selector (if month scope) */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Pilih Bulan:</span>
+                    </label>
+                    <select
+                      value={deleteSelectedMonth}
+                      disabled={deleteScope === 'year'}
+                      onChange={(e) => setDeleteSelectedMonth(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-50 disabled:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                    >
+                      {INDONESIAN_MONTHS.map((m, idx) => (
+                        <option key={m} value={idx + 1}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Live Preview Box & Delete Trigger Button */}
+                <div className="bg-white p-4 rounded-2xl border border-rose-200/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Status Data:</span>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono">
+                        {deletePeriodLabel}
+                      </span>
+                    </div>
+                    <div className="text-sm font-extrabold text-slate-900">
+                      {reportsMatchingDeletePeriod.length > 0 ? (
+                        <span className="text-rose-700">
+                          Ditemukan {reportsMatchingDeletePeriod.length} tiket laporan pada periode ini
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">
+                          Tidak ada laporan yang terdaftar pada periode ini
+                        </span>
+                      )}
+                    </div>
+                    {reportsMatchingDeletePeriod.length > 0 && (
+                      <p className="text-[11px] text-slate-500">
+                        Tiket yang cocok: {reportsMatchingDeletePeriod.slice(0, 3).map(r => r.code).join(', ')}
+                        {reportsMatchingDeletePeriod.length > 3 ? ` dan ${reportsMatchingDeletePeriod.length - 3} lainnya` : ''}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    disabled={reportsMatchingDeletePeriod.length === 0}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md shadow-rose-600/20 transition-all active:scale-[0.98] shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>
+                      Hapus {reportsMatchingDeletePeriod.length} Laporan ({deletePeriodLabel})
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               {/* Reset to Mock or Clear All */}
               <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                 <button
@@ -613,8 +857,315 @@ export const SettingsDashboard: React.FC<SettingsDashboardProps> = ({
               </div>
             </div>
           )}
+
+          {/* SECTION 5: MASTER DATA MATERIAL TALANG & BENTUK KERUSAKAN */}
+          {activeSection === 'master_data' && (
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-xs space-y-6">
+              <div className="border-b border-slate-100 pb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <Tag className="w-5 h-5 text-blue-600" />
+                    <span>Master Data Material Talang & Bentuk Kerusakan</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Kelola pilihan jenis material dan masalah kerusakan yang tampil pada form input laporan dan foto perbaikan talang.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updatedSettings: SystemSettings = {
+                      ...formData,
+                      gutterTypes: gutterList,
+                      damageTypes: damageList,
+                    };
+                    onUpdateSettings(updatedSettings);
+                    setMasterSuccessMsg('Perubahan master data jenis talang & kerusakan berhasil disimpan ke Firebase!');
+                    setTimeout(() => setMasterSuccessMsg(''), 3000);
+                  }}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center gap-2 active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Simpan Perubahan ke Firebase</span>
+                </button>
+              </div>
+
+              {masterSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-bounce">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>{masterSuccessMsg}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* PANEL 1: MATERIAL TALANG */}
+                <div className="bg-slate-50/80 p-4 sm:p-5 rounded-2xl border border-slate-200/90 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          1. Material Talang Air
+                        </h4>
+                        <span className="text-[11px] text-slate-400">
+                          {gutterList.length} jenis tersedia
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tambah Baru */}
+                  <div className="bg-white p-3 rounded-xl border border-blue-200 space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      + Tambah Material Baru:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newGutterInput}
+                        onChange={(e) => setNewGutterInput(e.target.value)}
+                        placeholder="Contoh: Tembaga / Copper, Zincalume 0.4mm..."
+                        className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmed = newGutterInput.trim();
+                          if (!trimmed) return;
+                          if (gutterList.some((g) => g.label.toLowerCase() === trimmed.toLowerCase())) {
+                            alert('Material ini sudah ada');
+                            return;
+                          }
+                          const newItem: MasterOptionItem = {
+                            id: `custom_${Date.now()}`,
+                            label: trimmed,
+                            isCustom: true,
+                          };
+                          const updated = [...gutterList, newItem];
+                          setGutterList(updated);
+                          setNewGutterInput('');
+                          const updatedSettings: SystemSettings = {
+                            ...formData,
+                            gutterTypes: updated,
+                            damageTypes: damageList,
+                          };
+                          onUpdateSettings(updatedSettings);
+                          setMasterSuccessMsg(`Material "${trimmed}" berhasil ditambahkan & disinkronkan!`);
+                          setTimeout(() => setMasterSuccessMsg(''), 3000);
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Daftar Item */}
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {gutterList.map((item, idx) => (
+                      <div key={item.id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-200">
+                        <span className="text-xs font-bold text-slate-400 w-5 text-center font-mono">
+                          {idx + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={item.label}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setGutterList((prev) =>
+                              prev.map((g) => (g.id === item.id ? { ...g, label: val } : g))
+                            );
+                          }}
+                          className="flex-1 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        {item.isCustom ? (
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                            Kustom
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                            Bawaan
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (gutterList.length <= 1) {
+                              alert('Minimal harus ada 1 material talang');
+                              return;
+                            }
+                            const updated = gutterList.filter((g) => g.id !== item.id);
+                            setGutterList(updated);
+                            onUpdateSettings({ ...formData, gutterTypes: updated, damageTypes: damageList });
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Hapus jenis material"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* PANEL 2: BENTUK KERUSAKAN */}
+                <div className="bg-slate-50/80 p-4 sm:p-5 rounded-2xl border border-slate-200/90 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                        <Wrench className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                          2. Bentuk Masalah Kerusakan
+                        </h4>
+                        <span className="text-[11px] text-slate-400">
+                          {damageList.length} jenis tersedia
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tambah Baru */}
+                  <div className="bg-white p-3 rounded-xl border border-rose-200 space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      + Tambah Bentuk Kerusakan Baru:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newDamageInput}
+                        onChange={(e) => setNewDamageInput(e.target.value)}
+                        placeholder="Contoh: Sambungan Flashing Lepas, Karat Asam..."
+                        className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmed = newDamageInput.trim();
+                          if (!trimmed) return;
+                          if (damageList.some((d) => d.label.toLowerCase() === trimmed.toLowerCase())) {
+                            alert('Bentuk kerusakan ini sudah ada');
+                            return;
+                          }
+                          const newItem: MasterOptionItem = {
+                            id: `custom_${Date.now()}`,
+                            label: trimmed,
+                            isCustom: true,
+                          };
+                          const updated = [...damageList, newItem];
+                          setDamageList(updated);
+                          setNewDamageInput('');
+                          const updatedSettings: SystemSettings = {
+                            ...formData,
+                            gutterTypes: gutterList,
+                            damageTypes: updated,
+                          };
+                          onUpdateSettings(updatedSettings);
+                          setMasterSuccessMsg(`Bentuk kerusakan "${trimmed}" berhasil ditambahkan & disinkronkan!`);
+                          setTimeout(() => setMasterSuccessMsg(''), 3000);
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Daftar Item */}
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {damageList.map((item, idx) => (
+                      <div key={item.id} className="flex items-center gap-2 p-2 bg-white rounded-xl border border-slate-200">
+                        <span className="text-xs font-bold text-slate-400 w-5 text-center font-mono">
+                          {idx + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={item.label}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDamageList((prev) =>
+                              prev.map((d) => (d.id === item.id ? { ...d, label: val } : d))
+                            );
+                          }}
+                          className="flex-1 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        {item.isCustom ? (
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                            Kustom
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                            Bawaan
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (damageList.length <= 1) {
+                              alert('Minimal harus ada 1 bentuk kerusakan');
+                              return;
+                            }
+                            const updated = damageList.filter((d) => d.id !== item.id);
+                            setDamageList(updated);
+                            onUpdateSettings({ ...formData, gutterTypes: gutterList, damageTypes: updated });
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Hapus jenis kerusakan"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Reset to Default Presets */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Reset seluruh daftar material dan kerusakan ke standar bawaan sistem?')) {
+                      setGutterList(DEFAULT_GUTTER_TYPES);
+                      setDamageList(DEFAULT_DAMAGE_TYPES);
+                      onUpdateSettings({
+                        ...formData,
+                        gutterTypes: DEFAULT_GUTTER_TYPES,
+                        damageTypes: DEFAULT_DAMAGE_TYPES,
+                      });
+                      setMasterSuccessMsg('Daftar jenis talang & kerusakan berhasil direset ke bawaan default.');
+                      setTimeout(() => setMasterSuccessMsg(''), 3000);
+                    }
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset ke Standar Bawaan</span>
+                </button>
+
+                <p className="text-[11px] text-slate-400">
+                  Semua perubahan langsung aktif di form pelaporan & komparasi foto
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal Konfirmasi Hapus Data Periode */}
+      <DeletePeriodModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        periodLabel={deletePeriodLabel}
+        reportsToDelete={reportsMatchingDeletePeriod}
+        onConfirmDelete={handleExecuteBatchDelete}
+      />
     </div>
   );
 };

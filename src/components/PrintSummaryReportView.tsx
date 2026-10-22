@@ -1,5 +1,14 @@
 import React from 'react';
-import { GutterReport, STATUS_CONFIG, GUTTER_TYPE_LABELS, DAMAGE_TYPE_LABELS, SystemSettings, DEFAULT_SETTINGS } from '../types';
+import { 
+  GutterReport, 
+  STATUS_CONFIG, 
+  GUTTER_TYPE_LABELS, 
+  DAMAGE_TYPE_LABELS, 
+  SystemSettings, 
+  DEFAULT_SETTINGS,
+  getGutterTypeLabel,
+  getDamageTypeLabel
+} from '../types';
 import { Printer, X, FileSpreadsheet, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface PrintSummaryReportViewProps {
@@ -151,8 +160,8 @@ export const PrintSummaryReportView: React.FC<PrintSummaryReportViewProps> = ({
                       <strong className="text-slate-900 block">{r.title}</strong>
                       <span className="text-[11px] text-slate-500 line-clamp-1">{r.location}</span>
                     </td>
-                    <td className="py-2 px-3 text-slate-700">{GUTTER_TYPE_LABELS[r.gutterType]}</td>
-                    <td className="py-2 px-3 text-slate-700">{DAMAGE_TYPE_LABELS[r.damageType]}</td>
+                    <td className="py-2 px-3 text-slate-700">{getGutterTypeLabel(r.gutterType, settings?.gutterTypes)}</td>
+                    <td className="py-2 px-3 text-slate-700">{getDamageTypeLabel(r.damageType, settings?.damageTypes)}</td>
                     <td className="py-2 px-3 text-center">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-300 bg-white inline-block">
                         {STATUS_CONFIG[r.status]?.label} ({r.progressPercentage}%)

@@ -1,5 +1,13 @@
 import * as XLSX from 'xlsx';
-import { GutterReport, STATUS_CONFIG, GUTTER_TYPE_LABELS, DAMAGE_TYPE_LABELS, URGENCY_LABELS } from '../types';
+import { 
+  GutterReport, 
+  STATUS_CONFIG, 
+  GUTTER_TYPE_LABELS, 
+  DAMAGE_TYPE_LABELS, 
+  URGENCY_LABELS,
+  getGutterTypeLabel,
+  getDamageTypeLabel
+} from '../types';
 
 export function exportReportsToExcel(
   reports: GutterReport[],
@@ -12,8 +20,8 @@ export function exportReportsToExcel(
     'Tanggal Laporan': r.createdAt,
     'Titik / Area Talang': r.title,
     'Alamat Lokasi': r.location,
-    'Material Talang': GUTTER_TYPE_LABELS[r.gutterType] || r.gutterType,
-    'Jenis Kerusakan': DAMAGE_TYPE_LABELS[r.damageType] || r.damageType,
+    'Material Talang': getGutterTypeLabel(r.gutterType),
+    'Jenis Kerusakan': getDamageTypeLabel(r.damageType),
     'Tingkat Urgensi': URGENCY_LABELS[r.urgency]?.label || r.urgency,
     'Status Progres': STATUS_CONFIG[r.status]?.label || r.status,
     'Progres (%)': `${r.progressPercentage}%`,

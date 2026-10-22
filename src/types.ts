@@ -1,11 +1,33 @@
-export type GutterType = 'seng_galvalum' | 'pvc' | 'beton' | 'karpet_plat';
+export type GutterType = 'seng_galvalum' | 'pvc' | 'beton' | 'karpet_plat' | string;
 
 export type DamageType = 
   | 'bocor_retak' 
   | 'karat_keropos' 
   | 'tersumbat_sampah' 
   | 'sambungan_lepas' 
-  | 'kemiringan_anjlok';
+  | 'kemiringan_anjlok'
+  | string;
+
+export interface MasterOptionItem {
+  id: string;
+  label: string;
+  isCustom?: boolean;
+}
+
+export const DEFAULT_GUTTER_TYPES: MasterOptionItem[] = [
+  { id: 'seng_galvalum', label: 'Seng / Galvalum' },
+  { id: 'pvc', label: 'PVC / Paralon' },
+  { id: 'beton', label: 'Talang Dak Beton' },
+  { id: 'karpet_plat', label: 'Talang Karpet / Plat Aluminium' },
+];
+
+export const DEFAULT_DAMAGE_TYPES: MasterOptionItem[] = [
+  { id: 'bocor_retak', label: 'Bocor & Retak Air Mengucur' },
+  { id: 'karat_keropos', label: 'Karat & Keropos Parah' },
+  { id: 'tersumbat_sampah', label: 'Tersumbat Daun & Lumut' },
+  { id: 'sambungan_lepas', label: 'Sambungan Lepas / Patah' },
+  { id: 'kemiringan_anjlok', label: 'Melengkung / Air Menggenang' },
+];
 
 export type UrgencyLevel = 'darurat' | 'sedang' | 'ringan';
 
@@ -50,20 +72,36 @@ export interface GutterReport {
   timeline: TimelineEvent[];
 }
 
-export const GUTTER_TYPE_LABELS: Record<GutterType, string> = {
+export const GUTTER_TYPE_LABELS: Record<string, string> = {
   seng_galvalum: 'Seng / Galvalum',
   pvc: 'PVC / Paralon',
   beton: 'Talang Dak Beton',
   karpet_plat: 'Talang Karpet / Plat Aluminium',
 };
 
-export const DAMAGE_TYPE_LABELS: Record<DamageType, string> = {
+export const DAMAGE_TYPE_LABELS: Record<string, string> = {
   bocor_retak: 'Bocor & Retak Air Mengucur',
   karat_keropos: 'Karat & Keropos Parah',
   tersumbat_sampah: 'Tersumbat Daun & Lumut',
   sambungan_lepas: 'Sambungan Lepas / Patah',
   kemiringan_anjlok: 'Melengkung / Air Menggenang',
 };
+
+export function getGutterTypeLabel(typeKey: string, customList?: MasterOptionItem[]): string {
+  if (customList && customList.length > 0) {
+    const match = customList.find((c) => c.id === typeKey || c.label.toLowerCase() === typeKey.toLowerCase());
+    if (match) return match.label;
+  }
+  return GUTTER_TYPE_LABELS[typeKey] || typeKey;
+}
+
+export function getDamageTypeLabel(damageKey: string, customList?: MasterOptionItem[]): string {
+  if (customList && customList.length > 0) {
+    const match = customList.find((c) => c.id === damageKey || c.label.toLowerCase() === damageKey.toLowerCase());
+    if (match) return match.label;
+  }
+  return DAMAGE_TYPE_LABELS[damageKey] || damageKey;
+}
 
 export const URGENCY_LABELS: Record<UrgencyLevel, { label: string; color: string; badgeClass: string }> = {
   darurat: {
@@ -153,6 +191,8 @@ export interface SystemSettings {
   simulationIntervalSec: number;
   enableNotifications: boolean;
   waTemplate: string;
+  gutterTypes?: MasterOptionItem[];
+  damageTypes?: MasterOptionItem[];
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -168,6 +208,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   waterTestStandard: 'Siram air bertekanan debit 30 liter/menit selama 15 menit',
   simulationIntervalSec: 12,
   enableNotifications: true,
+  gutterTypes: DEFAULT_GUTTER_TYPES,
+  damageTypes: DEFAULT_DAMAGE_TYPES,
   waTemplate: `*LAPORAN PERBAIKAN TALANG AIR - SiTalang*
 ━━━━━━━━━━━━━━━━━━━━
 📌 *Kode:* {code}

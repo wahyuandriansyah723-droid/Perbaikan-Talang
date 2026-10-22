@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GutterReport, RepairStatus, STATUS_CONFIG, SystemSettings, DEFAULT_SETTINGS } from './types';
 import { INITIAL_REPORTS } from './data/mockData';
+import { parseReportDate, INDONESIAN_MONTHS } from './utils/dateHelper';
 import { Navbar } from './components/Navbar';
 import { StatsCards } from './components/StatsCards';
 import { FilterBar } from './components/FilterBar';
@@ -11,6 +12,7 @@ import { PrintReportView } from './components/PrintReportView';
 import { ReportDashboard } from './components/ReportDashboard';
 import { PrintSummaryReportView } from './components/PrintSummaryReportView';
 import { SettingsDashboard } from './components/SettingsDashboard';
+import { DeletePeriodModal } from './components/DeletePeriodModal';
 import { 
   Plus, 
   Wrench, 
@@ -22,166 +24,172 @@ import {
   CloudRain,
   BarChart3,
   ClipboardList,
-  Settings
+  Settings,
+  Cloud,
+  Trash2
 } from 'lucide-react';
-
-const STORAGE_KEY = 'sitalang_reports_data_v1';
-const SETTINGS_STORAGE_KEY = 'sitalang_settings_data_v1';
+import {
+  subscribeToReports,
+  subscribeToSettings,
+  saveReportToFirestore,
+  deleteReportFromFirestore,
+  deleteReportsBatch,
+  saveSettingsToFirestore,
+  restoreReportsToFirestore,
+  resetAllReportsInFirestore,
+} from './firebase/firestoreService';
 
 export default function App() {
-  const [reports, setReports] = useState<GutterReport[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((item: GutterReport) => {
-            const found = INITIAL_REPORTS.find(init => init.id === item.id);
-            if (found && !item.repairPhotoUrl && found.repairPhotoUrl) {
-              return { ...item, repairPhotoUrl: found.repairPhotoUrl, repairNotes: found.repairNotes };
-            }
-            return item;
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load reports from localStorage', e);
-    }
-    return INITIAL_REPORTS;
-  });
-
-  // Settings State
-  const [settings, setSettings] = useState<SystemSettings>(() => {
-    try {
-      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.error('Failed to load settings', e);
-    }
-    return DEFAULT_SETTINGS;
-  });
+  // Main Data States (Synchronized via Firebase Firestore Real-Time)
+  const [reports, setReports] = useState<GutterReport[]>(INITIAL_REPORTS);
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
 
   // Active view: 'list' (Tiket Lapangan) | 'dashboard' (Dasbor & Rekap Periode) | 'settings' (Pengaturan Sistem)
   const [activeView, setActiveView] = useState<'list' | 'dashboard' | 'settings'>('list');
 
+  // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilterStatus, setActiveFilterStatus] = useState<string | null>(null);
   const [selectedGutterType, setSelectedGutterType] = useState('all');
   const [selectedDamageType, setSelectedDamageType] = useState('all');
   const [selectedUrgency, setSelectedUrgency] = useState('all');
 
+  // Date Period Filter for Tiket Lapangan (Day, Month, Year)
+  const [datePeriodType, setDatePeriodType] = useState<'all' | 'day' | 'month' | 'year'>('all');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+
+  // Modal & Print States
   const [selectedReportForDetail, setSelectedReportForDetail] = useState<GutterReport | null>(null);
   const [isNewReportOpen, setIsNewReportOpen] = useState(false);
   const [selectedReportForPrint, setSelectedReportForPrint] = useState<GutterReport | null>(null);
   const [summaryPrintData, setSummaryPrintData] = useState<{ reports: GutterReport[]; periodLabel: string } | null>(null);
+  const [isFilterBarPeriodDeleteOpen, setIsFilterBarPeriodDeleteOpen] = useState(false);
 
   // Real-time live simulation mode state & toast notification
   const [isSimulating, setIsSimulating] = useState(false);
   const [liveToast, setLiveToast] = useState<{ message: string; code: string } | null>(null);
 
-  // Save to localStorage whenever reports change
+  // Subscribe to Firebase Firestore Real-Time Data (No localStorage / sessionStorage)
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
-    } catch (e) {
-      console.error('Failed to save reports to localStorage', e);
-    }
-  }, [reports]);
+    const unsubReports = subscribeToReports(
+      (firestoreReports) => {
+        setReports(firestoreReports);
+        setIsCloudConnected(true);
+      },
+      (error) => {
+        console.error('Firestore reports listener error:', error);
+      }
+    );
 
-  // Save settings to localStorage
-  const handleUpdateSettings = (newSettings: SystemSettings) => {
+    const unsubSettings = subscribeToSettings(
+      (firestoreSettings) => {
+        setSettings(firestoreSettings);
+      },
+      (error) => {
+        console.error('Firestore settings listener error:', error);
+      }
+    );
+
+    return () => {
+      unsubReports();
+      unsubSettings();
+    };
+  }, []);
+
+  // Save settings directly to Firebase Firestore
+  const handleUpdateSettings = async (newSettings: SystemSettings) => {
     setSettings(newSettings);
     try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+      await saveSettingsToFirestore(newSettings);
+      setLiveToast({
+        message: 'Pengaturan sistem berhasil disinkronkan ke Firebase Firestore.',
+        code: 'CLOUD_SETTINGS',
+      });
     } catch (e) {
-      console.error('Failed to save settings', e);
+      console.error('Failed to save settings to Firestore:', e);
     }
-    setLiveToast({
-      message: 'Pengaturan sistem berhasil diperbarui.',
-      code: 'SETTINGS',
-    });
   };
 
-  const handleRestoreReports = (restoredReports: GutterReport[]) => {
-    setReports(restoredReports);
+  // Restore reports to Firebase Firestore
+  const handleRestoreReports = async (restoredReports: GutterReport[]) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredReports));
+      await restoreReportsToFirestore(restoredReports);
+      setLiveToast({
+        message: `Database Firestore berhasil diperbarui (${restoredReports.length} laporan).`,
+        code: 'CLOUD_RESTORE',
+      });
     } catch (e) {
-      console.error('Failed to save restored reports', e);
+      console.error('Failed to restore reports to Firestore:', e);
     }
-    setLiveToast({
-      message: `Database berhasil diperbarui (${restoredReports.length} laporan).`,
-      code: 'DATABASE',
-    });
   };
 
-  // Real-time simulation effect
+  // Real-time simulation effect: updates Firestore so other devices see progress automatically
   useEffect(() => {
     if (!isSimulating) return;
 
     const intervalMs = (settings.simulationIntervalSec || 12) * 1000;
 
-    const interval = setInterval(() => {
-      setReports((prevReports) => {
-        // Find a report that is not yet completed
-        const activeReports = prevReports.filter(r => r.status !== 'selesai');
-        if (activeReports.length === 0) return prevReports;
+    const interval = setInterval(async () => {
+      const activeReports = reports.filter(r => r.status !== 'selesai');
+      if (activeReports.length === 0) return;
 
-        const targetReport = activeReports[Math.floor(Math.random() * activeReports.length)];
-        let nextStatus: RepairStatus = targetReport.status;
-        let updateNote = '';
+      const targetReport = activeReports[Math.floor(Math.random() * activeReports.length)];
+      let nextStatus: RepairStatus = targetReport.status;
+      let updateNote = '';
 
-        if (targetReport.status === 'dilaporkan') {
-          nextStatus = 'survei';
-          updateNote = 'Teknisi tiba di lokasi dan memulai inspeksi fisik titik talang air.';
-        } else if (targetReport.status === 'survei') {
-          nextStatus = 'dikerjakan';
-          updateNote = 'Material sealant bitumen & serat fiber disiapkan. Pembersihan talang dimulai.';
-        } else if (targetReport.status === 'dikerjakan') {
-          nextStatus = 'uji_coba';
-          updateNote = 'Penambalan selesai 100%. Mulai tes siram air dengan debit deras untuk uji kebocoran.';
-        } else if (targetReport.status === 'uji_coba') {
-          nextStatus = 'selesai';
-          updateNote = 'Uji coba air sukses tanpa rembesan. Talang bersih dan garansi diaktifkan.';
-        }
+      if (targetReport.status === 'dilaporkan') {
+        nextStatus = 'survei';
+        updateNote = 'Teknisi tiba di lokasi dan memulai inspeksi fisik titik talang air.';
+      } else if (targetReport.status === 'survei') {
+        nextStatus = 'dikerjakan';
+        updateNote = 'Material sealant bitumen & serat fiber disiapkan. Pembersihan talang dimulai.';
+      } else if (targetReport.status === 'dikerjakan') {
+        nextStatus = 'uji_coba';
+        updateNote = 'Penambalan selesai 100%. Mulai tes siram air dengan debit deras untuk uji kebocoran.';
+      } else if (targetReport.status === 'uji_coba') {
+        nextStatus = 'selesai';
+        updateNote = 'Uji coba air sukses tanpa rembesan. Talang bersih dan garansi diaktifkan.';
+      }
 
-        const now = new Date();
-        const timeFormatted = `${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}, ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} WIB`;
+      const now = new Date();
+      const timeFormatted = `${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}, ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} WIB`;
 
-        const newEvent = {
-          id: `t-sim-${Date.now()}`,
-          timestamp: timeFormatted,
-          status: nextStatus,
-          title: `Update Lapangan: ${STATUS_CONFIG[nextStatus].label}`,
-          note: updateNote,
-          actor: targetReport.technicianName || settings.picCoordinator || 'Teknisi SiTalang',
-        };
+      const newEvent = {
+        id: `t-sim-${Date.now()}`,
+        timestamp: timeFormatted,
+        status: nextStatus,
+        title: `Update Lapangan: ${STATUS_CONFIG[nextStatus].label}`,
+        note: updateNote,
+        actor: targetReport.technicianName || settings.picCoordinator || 'Teknisi SiTalang',
+      };
 
-        const updatedReport: GutterReport = {
-          ...targetReport,
-          status: nextStatus,
-          progressPercentage: STATUS_CONFIG[nextStatus].percentage,
-          updatedAt: timeFormatted,
-          timeline: [...targetReport.timeline, newEvent],
-        };
+      const updatedReport: GutterReport = {
+        ...targetReport,
+        status: nextStatus,
+        progressPercentage: STATUS_CONFIG[nextStatus].percentage,
+        updatedAt: timeFormatted,
+        timeline: [...targetReport.timeline, newEvent],
+      };
 
-        // Trigger toast
+      try {
+        await saveReportToFirestore(updatedReport);
         setLiveToast({
           message: `${targetReport.code}: ${STATUS_CONFIG[nextStatus].label} - "${updateNote}"`,
           code: targetReport.code,
         });
-
-        // Also update detail modal if it's currently open on this report
-        setSelectedReportForDetail((curr) => curr && curr.id === targetReport.id ? updatedReport : curr);
-
-        return prevReports.map(r => r.id === targetReport.id ? updatedReport : r);
-      });
+      } catch (err) {
+        console.error('Simulation write to Firestore error:', err);
+      }
     }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [isSimulating, settings.simulationIntervalSec, settings.picCoordinator]);
+  }, [isSimulating, reports, settings.simulationIntervalSec, settings.picCoordinator]);
 
   // Toast auto-hide
   useEffect(() => {
@@ -193,36 +201,61 @@ export default function App() {
     }
   }, [liveToast]);
 
-  // Handlers
-  const handleCreateNewReport = (newReport: GutterReport) => {
-    setReports(prev => [newReport, ...prev]);
-    setLiveToast({
-      message: `Laporan baru ${newReport.code} berhasil ditambahkan! Menunggu antrean teknisi.`,
-      code: newReport.code,
-    });
-  };
-
-  const handleUpdateReport = (updated: GutterReport) => {
-    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-    setSelectedReportForDetail(updated);
-    setLiveToast({
-      message: `Perubahan data laporan ${updated.code} berhasil disimpan!`,
-      code: updated.code,
-    });
-  };
-
-  const handleDeleteReport = (reportId: string) => {
-    const target = reports.find(r => r.id === reportId);
-    setReports(prev => prev.filter(r => r.id !== reportId));
-    if (target) {
+  // CRUD Handlers - All synchronized directly with Firebase Firestore
+  const handleCreateNewReport = async (newReport: GutterReport) => {
+    try {
+      await saveReportToFirestore(newReport);
       setLiveToast({
-        message: `Laporan ${target.code} (${target.title}) berhasil dihapus.`,
-        code: target.code,
+        message: `Laporan baru ${newReport.code} berhasil disimpan ke Firebase Firestore!`,
+        code: newReport.code,
       });
+    } catch (e) {
+      console.error('Failed to create report in Firestore:', e);
     }
   };
 
-  const handleQuickAdvanceStatus = (report: GutterReport) => {
+  const handleUpdateReport = async (updated: GutterReport) => {
+    try {
+      await saveReportToFirestore(updated);
+      setSelectedReportForDetail((curr) => curr && curr.id === updated.id ? updated : curr);
+      setLiveToast({
+        message: `Perubahan data ${updated.code} tersinkron ke semua perangkat!`,
+        code: updated.code,
+      });
+    } catch (e) {
+      console.error('Failed to update report in Firestore:', e);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    const target = reports.find(r => r.id === reportId);
+    try {
+      await deleteReportFromFirestore(reportId);
+      if (target) {
+        setLiveToast({
+          message: `Laporan ${target.code} (${target.title}) dihapus dari database online.`,
+          code: target.code,
+        });
+      }
+    } catch (e) {
+      console.error('Failed to delete report in Firestore:', e);
+    }
+  };
+
+  const handleDeleteReportsBatch = async (reportIds: string[], periodLabel: string) => {
+    if (!reportIds || reportIds.length === 0) return;
+    try {
+      await deleteReportsBatch(reportIds);
+      setLiveToast({
+        message: `Berhasil menghapus ${reportIds.length} data laporan periode ${periodLabel} dari Firebase Firestore.`,
+        code: 'HAPUS_PERIODE',
+      });
+    } catch (e) {
+      console.error('Failed to batch delete reports from Firestore:', e);
+    }
+  };
+
+  const handleQuickAdvanceStatus = async (report: GutterReport) => {
     let nextStatus: RepairStatus = report.status;
     let note = '';
 
@@ -260,20 +293,19 @@ export default function App() {
       timeline: [...report.timeline, newEvent],
     };
 
-    handleUpdateReport(updated);
-    setLiveToast({
-      message: `${report.code} dinaikkan ke tahap: ${STATUS_CONFIG[nextStatus].label}`,
-      code: report.code,
-    });
+    await handleUpdateReport(updated);
   };
 
-  const handleResetData = () => {
-    setReports(INITIAL_REPORTS);
-    localStorage.removeItem(STORAGE_KEY);
-    setLiveToast({
-      message: 'Data laporan telah direset ke contoh default.',
-      code: 'RESET',
-    });
+  const handleResetData = async () => {
+    try {
+      await resetAllReportsInFirestore();
+      setLiveToast({
+        message: 'Database Firestore telah direset ke contoh default.',
+        code: 'RESET_CLOUD',
+      });
+    } catch (e) {
+      console.error('Failed to reset reports in Firestore:', e);
+    }
   };
 
   const handleClearFilters = () => {
@@ -282,10 +314,12 @@ export default function App() {
     setSelectedGutterType('all');
     setSelectedDamageType('all');
     setSelectedUrgency('all');
+    setDatePeriodType('all');
   };
 
-  // Filter logic for List View
+  // Filter logic for Tiket Lapangan (Text, Date/Month/Year, Status, Type, Urgency, Damage)
   const filteredReports = reports.filter((item) => {
+    // 1. Text Search Query
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       const matchCode = item.code.toLowerCase().includes(q);
@@ -298,6 +332,21 @@ export default function App() {
       }
     }
 
+    // 2. Date Period Filter (Per Tanggal, Per Bulan, Per Tahun)
+    if (datePeriodType !== 'all') {
+      const parsed = parseReportDate(item.createdAt);
+      if (datePeriodType === 'day' && parsed.formattedDate !== selectedDate) {
+        return false;
+      }
+      if (datePeriodType === 'month' && (parsed.year !== selectedYear || parsed.month !== selectedMonth)) {
+        return false;
+      }
+      if (datePeriodType === 'year' && parsed.year !== selectedYear) {
+        return false;
+      }
+    }
+
+    // 3. Quick Status Filter
     if (activeFilterStatus === 'menunggu') {
       if (item.status !== 'dilaporkan' && item.status !== 'survei') return false;
     } else if (activeFilterStatus === 'proses') {
@@ -306,14 +355,17 @@ export default function App() {
       if (item.status !== 'selesai') return false;
     }
 
+    // 4. Gutter Type
     if (selectedGutterType !== 'all' && item.gutterType !== selectedGutterType) {
       return false;
     }
 
+    // 5. Damage Type
     if (selectedDamageType !== 'all' && item.damageType !== selectedDamageType) {
       return false;
     }
 
+    // 6. Urgency Level
     if (selectedUrgency !== 'all' && item.urgency !== selectedUrgency) {
       return false;
     }
@@ -329,7 +381,7 @@ export default function App() {
         isSimulating={isSimulating}
         onToggleSimulation={() => setIsSimulating(!isSimulating)}
         onResetData={() => {
-          if (window.confirm('Reset data laporan ke contoh awal?')) {
+          if (window.confirm('Reset data laporan di Firebase Firestore ke contoh awal?')) {
             handleResetData();
           }
         }}
@@ -350,17 +402,29 @@ export default function App() {
               Pantau Kerusakan & Progres Perbaikan Talang Air
             </h1>
             <p className="text-xs sm:text-sm text-blue-200/90 max-w-2xl">
-              Input foto sebelum-sesudah, pantau tahapan secara real-time, cek rekapitulasi harian/bulanan/tahunan, dan konfigurasikan kop PDF di pengaturan.
+              Sinkronisasi online Firebase Firestore real-time: input foto sebelum-sesudah, pencarian tiket per hari/bulan/tahun, rekapitulasi, dan ekspor dokumen.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0 relative z-10">
             <button
+              onClick={() => setActiveView(activeView === 'dashboard' ? 'list' : 'dashboard')}
+              className={`px-3 py-2 text-white font-bold text-xs sm:text-sm rounded-xl border shadow-xs transition-all flex items-center gap-1.5 ${
+                activeView === 'dashboard'
+                  ? 'bg-blue-600 border-blue-300 ring-2 ring-blue-300/40'
+                  : 'bg-blue-800/80 hover:bg-blue-700 border-blue-400/30'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 text-cyan-300" />
+              <span>{activeView === 'dashboard' ? 'Kembali ke Tiket' : 'Dasbor & Grafik'}</span>
+            </button>
+
+            <button
               onClick={() => setActiveView(activeView === 'settings' ? 'list' : 'settings')}
               className="px-3 py-2 bg-blue-800/80 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl border border-blue-400/30 shadow-xs transition-all flex items-center gap-1.5"
             >
               <Settings className="w-4 h-4 text-cyan-300" />
-              <span>{activeView === 'settings' ? 'Kembali ke Tiket' : 'Pengaturan Sistem'}</span>
+              <span>{activeView === 'settings' ? 'Kembali ke Tiket' : 'Pengaturan'}</span>
             </button>
 
             <button
@@ -381,7 +445,7 @@ export default function App() {
             <div className="flex items-center gap-2 font-medium">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
               <span>
-                <strong>Mode Simulasi Real-Time Aktif:</strong> Sistem sedang memperbarui progres talang otomatis tiap {settings.simulationIntervalSec || 12} detik.
+                <strong>Mode Simulasi Real-Time Aktif:</strong> Sistem sedang memperbarui progres talang otomatis ke Firestore tiap {settings.simulationIntervalSec || 12} detik.
               </span>
             </div>
             <button
@@ -403,7 +467,7 @@ export default function App() {
               activeFilterStatus={activeFilterStatus}
             />
 
-            {/* Filter and Search Bar */}
+            {/* Filter and Search Bar with Date Period Search (Hari, Bulan, Tahun) */}
             <FilterBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -413,8 +477,19 @@ export default function App() {
               onDamageTypeChange={setSelectedDamageType}
               selectedUrgency={selectedUrgency}
               onUrgencyChange={setSelectedUrgency}
+              gutterTypes={settings.gutterTypes}
+              damageTypes={settings.damageTypes}
+              datePeriodType={datePeriodType}
+              onDatePeriodTypeChange={setDatePeriodType}
+              selectedDate={selectedDate}
+              onDateChange={setSelectedDate}
+              selectedMonth={selectedMonth}
+              onMonthChange={setSelectedMonth}
+              selectedYear={selectedYear}
+              onYearChange={setSelectedYear}
               onClearFilters={handleClearFilters}
               totalResults={filteredReports.length}
+              onDeleteFilteredPeriod={() => setIsFilterBarPeriodDeleteOpen(true)}
             />
 
             {/* Reports Grid */}
@@ -440,7 +515,7 @@ export default function App() {
                   Tidak Ada Laporan Talang yang Sesuai
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
-                  Coba reset filter atau kata kunci pencarian, atau buat laporan kerusakan talang baru sekarang.
+                  Coba sesuaikan filter tanggal/bulan/tahun atau kata kunci pencarian, atau buat laporan kerusakan talang baru sekarang.
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -459,6 +534,18 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* Modal Hapus Periode dari FilterBar Tiket Lapangan */}
+            <DeletePeriodModal
+              isOpen={isFilterBarPeriodDeleteOpen}
+              onClose={() => setIsFilterBarPeriodDeleteOpen(false)}
+              periodLabel={datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`}
+              reportsToDelete={filteredReports}
+              onConfirmDelete={async () => {
+                const label = datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`;
+                await handleDeleteReportsBatch(filteredReports.map((r) => r.id), label);
+              }}
+            />
           </div>
         )}
 
@@ -471,6 +558,8 @@ export default function App() {
             onOpenPrintSummary={(reps, label) => setSummaryPrintData({ reports: reps, periodLabel: label })}
             onUpdateReport={handleUpdateReport}
             onDeleteReport={handleDeleteReport}
+            onDeleteReportsBatch={handleDeleteReportsBatch}
+            onRestoreReports={handleRestoreReports}
           />
         )}
 
@@ -482,6 +571,7 @@ export default function App() {
             reports={reports}
             onRestoreReports={handleRestoreReports}
             onResetAllData={handleResetData}
+            onDeleteReportsBatch={handleDeleteReportsBatch}
           />
         )}
       </main>
@@ -494,7 +584,7 @@ export default function App() {
           </div>
           <div className="flex-1 text-xs">
             <div className="font-bold text-blue-300 mb-0.5 flex items-center gap-1.5">
-              <span>🔔 Notifikasi Sistem</span>
+              <span>🔔 Notifikasi Real-Time</span>
               <span className="font-mono text-[10px] bg-slate-800 px-1.5 py-0.2 rounded border border-slate-700">
                 {liveToast.code}
               </span>
@@ -522,6 +612,8 @@ export default function App() {
             setSelectedReportForDetail(null);
             setSelectedReportForPrint(rep);
           }}
+          settings={settings}
+          onUpdateSettings={handleUpdateSettings}
         />
       )}
 
@@ -530,6 +622,8 @@ export default function App() {
         isOpen={isNewReportOpen}
         onClose={() => setIsNewReportOpen(false)}
         onSubmit={handleCreateNewReport}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
       />
 
       {/* Modal Pratinjau Cetak / Ekspor PDF Satuan */}

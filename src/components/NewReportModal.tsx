@@ -9,9 +9,15 @@ import {
   DAMAGE_TYPE_LABELS, 
   URGENCY_LABELS,
   STATUS_CONFIG,
-  TimelineEvent
+  TimelineEvent,
+  SystemSettings,
+  DEFAULT_SETTINGS,
+  DEFAULT_GUTTER_TYPES,
+  DEFAULT_DAMAGE_TYPES,
+  MasterOptionItem
 } from '../types';
 import { SAMPLE_PRESET_IMAGES } from '../data/mockData';
+import { ManageTypesModal } from './ManageTypesModal';
 import { 
   X, 
   Camera, 
@@ -25,21 +31,41 @@ import {
   DollarSign,
   Calendar,
   Clock,
-  Layers
+  Layers,
+  Plus,
+  Pencil
 } from 'lucide-react';
 
 interface NewReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (newReport: GutterReport) => void;
+  settings?: SystemSettings;
+  onUpdateSettings?: (settings: SystemSettings) => void;
 }
 
 export const NewReportModal: React.FC<NewReportModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  settings = DEFAULT_SETTINGS,
+  onUpdateSettings,
 }) => {
-  if (!isOpen) return null;
+  const [manageModal, setManageModal] = useState<{
+    isOpen: boolean;
+    target: 'gutter' | 'damage';
+  }>({
+    isOpen: false,
+    target: 'gutter',
+  });
+
+  const gutterOptions = settings.gutterTypes && settings.gutterTypes.length > 0 
+    ? settings.gutterTypes 
+    : DEFAULT_GUTTER_TYPES;
+
+  const damageOptions = settings.damageTypes && settings.damageTypes.length > 0 
+    ? settings.damageTypes 
+    : DEFAULT_DAMAGE_TYPES;
 
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -69,6 +95,8 @@ export const NewReportModal: React.FC<NewReportModalProps> = ({
 
   const [selectedPresetIdx, setSelectedPresetIdx] = useState<number | null>(0);
   const [errorMsg, setErrorMsg] = useState('');
+
+  if (!isOpen) return null;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'before' | 'after') => {
     const file = e.target.files?.[0];
@@ -429,32 +457,70 @@ export const NewReportModal: React.FC<NewReportModalProps> = ({
           {/* Jenis Talang, Kerusakan, dan Status */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Material Talang:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Material Talang:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setManageModal({ isOpen: true, target: 'gutter' })}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Tambah / Edit</span>
+                </button>
+              </div>
               <select
                 value={gutterType}
-                onChange={(e) => setGutterType(e.target.value as GutterType)}
+                onChange={(e) => {
+                  if (e.target.value === '__ADD_NEW__') {
+                    setManageModal({ isOpen: true, target: 'gutter' });
+                  } else {
+                    setGutterType(e.target.value);
+                  }
+                }}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
-                {Object.entries(GUTTER_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                {gutterOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
                 ))}
+                <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                  + Tambah Jenis Material Baru...
+                </option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Bentuk Kerusakan:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Bentuk Kerusakan:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setManageModal({ isOpen: true, target: 'damage' })}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Tambah / Edit</span>
+                </button>
+              </div>
               <select
                 value={damageType}
-                onChange={(e) => setDamageType(e.target.value as DamageType)}
+                onChange={(e) => {
+                  if (e.target.value === '__ADD_NEW__') {
+                    setManageModal({ isOpen: true, target: 'damage' });
+                  } else {
+                    setDamageType(e.target.value);
+                  }
+                }}
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
-                {Object.entries(DAMAGE_TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                {damageOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
                 ))}
+                <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                  + Tambah Jenis Kerusakan Baru...
+                </option>
               </select>
             </div>
 
@@ -561,6 +627,31 @@ export const NewReportModal: React.FC<NewReportModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Modal Kelola & Tambah Jenis Material / Kerusakan */}
+      <ManageTypesModal
+        isOpen={manageModal.isOpen}
+        onClose={() => setManageModal((prev) => ({ ...prev, isOpen: false }))}
+        typeTarget={manageModal.target}
+        currentItems={manageModal.target === 'gutter' ? gutterOptions : damageOptions}
+        onSave={(updatedList, newlyAddedId) => {
+          if (manageModal.target === 'gutter') {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, gutterTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setGutterType(newlyAddedId);
+            }
+          } else {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, damageTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setDamageType(newlyAddedId);
+            }
+          }
+        }}
+      />
     </div>
   );
 };

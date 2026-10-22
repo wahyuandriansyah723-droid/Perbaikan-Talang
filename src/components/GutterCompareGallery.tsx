@@ -1,5 +1,15 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { GutterReport } from '../types';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { 
+  GutterReport, 
+  SystemSettings, 
+  DEFAULT_SETTINGS, 
+  DEFAULT_GUTTER_TYPES, 
+  DEFAULT_DAMAGE_TYPES, 
+  MasterOptionItem, 
+  getGutterTypeLabel, 
+  getDamageTypeLabel 
+} from '../types';
+import { ManageTypesModal } from './ManageTypesModal';
 import { 
   Camera, 
   Upload, 
@@ -13,18 +23,72 @@ import {
   Layers, 
   Sparkles,
   Download,
-  Info
+  Info,
+  Pencil,
+  Plus,
+  Check,
+  Save,
+  Wrench,
+  Tag
 } from 'lucide-react';
 
 interface GutterCompareGalleryProps {
   report: GutterReport;
   onUpdateRepairPhoto: (newPhotoUrl: string) => void;
+  onUpdateReport?: (updated: GutterReport) => void;
+  settings?: SystemSettings;
+  onUpdateSettings?: (settings: SystemSettings) => void;
 }
 
 export const GutterCompareGallery: React.FC<GutterCompareGalleryProps> = ({
   report,
   onUpdateRepairPhoto,
+  onUpdateReport,
+  settings = DEFAULT_SETTINGS,
+  onUpdateSettings,
 }) => {
+  const gutterOptions = settings.gutterTypes && settings.gutterTypes.length > 0 
+    ? settings.gutterTypes 
+    : DEFAULT_GUTTER_TYPES;
+
+  const damageOptions = settings.damageTypes && settings.damageTypes.length > 0 
+    ? settings.damageTypes 
+    : DEFAULT_DAMAGE_TYPES;
+
+  const [isEditingSpecs, setIsEditingSpecs] = useState(false);
+  const [specGutterType, setSpecGutterType] = useState(report.gutterType);
+  const [specDamageType, setSpecDamageType] = useState(report.damageType);
+  const [specSaveSuccess, setSpecSaveSuccess] = useState(false);
+  const [manageModal, setManageModal] = useState<{
+    isOpen: boolean;
+    target: 'gutter' | 'damage';
+  }>({
+    isOpen: false,
+    target: 'gutter',
+  });
+
+  useEffect(() => {
+    setSpecGutterType(report.gutterType);
+    setSpecDamageType(report.damageType);
+  }, [report.id, report.gutterType, report.damageType]);
+
+  const handleSaveSpecs = () => {
+    if (!onUpdateReport) return;
+    const now = new Date();
+    const timeFormatted = `${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}, ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} WIB`;
+    const updated: GutterReport = {
+      ...report,
+      gutterType: specGutterType,
+      damageType: specDamageType,
+      updatedAt: timeFormatted,
+    };
+    onUpdateReport(updated);
+    setSpecSaveSuccess(true);
+    setTimeout(() => {
+      setSpecSaveSuccess(false);
+      setIsEditingSpecs(false);
+    }, 1500);
+  };
   // View mode: 'split_slider' (interactive slider), 'side_by_side' (berdampingan), 'dual' (both slider and side-by-side)
   const [displayLayout, setDisplayLayout] = useState<'dual' | 'slider' | 'side'>('dual');
   const [sliderPosition, setSliderPosition] = useState<number>(50);
@@ -169,6 +233,192 @@ export const GutterCompareGallery: React.FC<GutterCompareGalleryProps> = ({
               <Columns className="w-3.5 h-3.5" />
               <span>Berdampingan</span>
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION: MATERIAL TALANG & BENTUK KERUSAKAN (BISA DIEDIT & TAMBAH JENIS) */}
+      <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-slate-50 p-4 rounded-2xl border border-blue-200 shadow-2xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+              <Tag className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <span>Material Talang & Bentuk Kerusakan</span>
+                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  Dapat Diedit & Tambah Jenis
+                </span>
+              </h4>
+              <p className="text-[11px] text-slate-500">
+                Spesifikasi talang pada foto perbaikan ini disinkronkan langsung ke database
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isEditingSpecs ? (
+              <button
+                type="button"
+                onClick={() => setIsEditingSpecs(true)}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>Edit Spesifikasi</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingSpecs(false)}
+                className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                Tutup Editor
+              </button>
+            )}
+          </div>
+        </div>
+
+        {specSaveSuccess && (
+          <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-1.5 animate-bounce">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>Spesifikasi material dan kerusakan berhasil diperbarui!</span>
+          </div>
+        )}
+
+        {/* Display Badges when not editing */}
+        {!isEditingSpecs ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200/90 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">
+                  Material Talang:
+                </span>
+                <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  {getGutterTypeLabel(report.gutterType, gutterOptions)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManageModal({ isOpen: true, target: 'gutter' })}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Tambah / Kelola</span>
+              </button>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-slate-200/90 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">
+                  Bentuk Kerusakan:
+                </span>
+                <span className="text-xs font-extrabold text-rose-700 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  {getDamageTypeLabel(report.damageType, damageOptions)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManageModal({ isOpen: true, target: 'damage' })}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Tambah / Kelola</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Inline Editing Form */
+          <div className="bg-white p-4 rounded-xl border border-blue-300 space-y-3.5 shadow-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    Material Talang:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setManageModal({ isOpen: true, target: 'gutter' })}
+                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah / Edit Jenis</span>
+                  </button>
+                </div>
+                <select
+                  value={specGutterType}
+                  onChange={(e) => {
+                    if (e.target.value === '__ADD_NEW__') {
+                      setManageModal({ isOpen: true, target: 'gutter' });
+                    } else {
+                      setSpecGutterType(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {gutterOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                  <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                    + Tambah Jenis Material Baru...
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    Bentuk Kerusakan:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setManageModal({ isOpen: true, target: 'damage' })}
+                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Tambah / Edit Jenis</span>
+                  </button>
+                </div>
+                <select
+                  value={specDamageType}
+                  onChange={(e) => {
+                    if (e.target.value === '__ADD_NEW__') {
+                      setManageModal({ isOpen: true, target: 'damage' });
+                    } else {
+                      setSpecDamageType(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {damageOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                  <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                    + Tambah Jenis Kerusakan Baru...
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsEditingSpecs(false)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSpecs}
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Simpan Perubahan</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -379,11 +629,31 @@ export const GutterCompareGallery: React.FC<GutterCompareGalleryProps> = ({
                   </div>
                 </div>
 
-                <div className="p-3.5 text-xs text-slate-600 space-y-1.5">
-                  <span className="font-bold text-slate-800 block">Diagnosa Kerusakan:</span>
-                  <p className="leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-slate-700">
-                    "{report.damageDescription}"
-                  </p>
+                <div className="p-3.5 text-xs text-slate-600 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                    <span className="text-[11px] font-bold text-slate-500">Material & Masalah Awal:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingSpecs(true)}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
+                    >
+                      <Pencil className="w-2.5 h-2.5" /> Ubah
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
+                      Talang: {getGutterTypeLabel(report.gutterType, gutterOptions)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-bold">
+                      Kerusakan: {getDamageTypeLabel(report.damageType, damageOptions)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-800 block mb-0.5">Diagnosa Kerusakan:</span>
+                    <p className="leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-slate-700">
+                      "{report.damageDescription}"
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -451,11 +721,31 @@ export const GutterCompareGallery: React.FC<GutterCompareGalleryProps> = ({
                   </div>
                 )}
 
-                <div className="p-3.5 text-xs text-slate-600 space-y-1.5">
-                  <span className="font-bold text-slate-800 block">Tindakan & Material Digunakan:</span>
-                  <p className="leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-slate-700">
-                    {report.repairNotes ? `"${report.repairNotes}"` : 'Talang telah dilapisi membrane waterproofing elastis dan sambungan dirapatkan.'}
-                  </p>
+                <div className="p-3.5 text-xs text-slate-600 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+                    <span className="text-[11px] font-bold text-emerald-800">Spesifikasi Hasil Perbaikan:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingSpecs(true)}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
+                    >
+                      <Pencil className="w-2.5 h-2.5" /> Ubah
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
+                      Material: {getGutterTypeLabel(report.gutterType, gutterOptions)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
+                      Tertangani: {getDamageTypeLabel(report.damageType, damageOptions)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-800 block mb-0.5">Tindakan & Material Digunakan:</span>
+                    <p className="leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-slate-700">
+                      {report.repairNotes ? `"${report.repairNotes}"` : 'Talang telah dilapisi membrane waterproofing elastis dan sambungan dirapatkan.'}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -573,6 +863,41 @@ export const GutterCompareGallery: React.FC<GutterCompareGalleryProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Kelola & Tambah Jenis Material / Kerusakan */}
+      <ManageTypesModal
+        isOpen={manageModal.isOpen}
+        onClose={() => setManageModal((prev) => ({ ...prev, isOpen: false }))}
+        typeTarget={manageModal.target}
+        currentItems={manageModal.target === 'gutter' ? gutterOptions : damageOptions}
+        onSave={(updatedList, newlyAddedId) => {
+          if (manageModal.target === 'gutter') {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, gutterTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setSpecGutterType(newlyAddedId);
+              if (onUpdateReport) {
+                const now = new Date();
+                const timeFormatted = `${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}, ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} WIB`;
+                onUpdateReport({ ...report, gutterType: newlyAddedId, updatedAt: timeFormatted });
+              }
+            }
+          } else {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, damageTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setSpecDamageType(newlyAddedId);
+              if (onUpdateReport) {
+                const now = new Date();
+                const timeFormatted = `${now.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][now.getMonth()]} ${now.getFullYear()}, ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} WIB`;
+                onUpdateReport({ ...report, damageType: newlyAddedId, updatedAt: timeFormatted });
+              }
+            }
+          }
+        }}
+      />
     </div>
   );
 };

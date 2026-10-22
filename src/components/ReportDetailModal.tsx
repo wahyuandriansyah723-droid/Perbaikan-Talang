@@ -9,9 +9,17 @@ import {
   TimelineEvent,
   GutterType,
   DamageType,
-  UrgencyLevel
+  UrgencyLevel,
+  SystemSettings,
+  DEFAULT_SETTINGS,
+  DEFAULT_GUTTER_TYPES,
+  DEFAULT_DAMAGE_TYPES,
+  MasterOptionItem,
+  getGutterTypeLabel,
+  getDamageTypeLabel
 } from '../types';
 import { parseReportDate } from '../utils/dateHelper';
+import { ManageTypesModal } from './ManageTypesModal';
 import { 
   X, 
   MapPin, 
@@ -33,7 +41,8 @@ import {
   Pencil,
   Calendar,
   Save,
-  Check
+  Check,
+  Plus
 } from 'lucide-react';
 import { GutterCompareGallery } from './GutterCompareGallery';
 
@@ -42,6 +51,8 @@ interface ReportDetailModalProps {
   onClose: () => void;
   onUpdateReport: (updated: GutterReport) => void;
   onPrintReport: (report: GutterReport) => void;
+  settings?: SystemSettings;
+  onUpdateSettings?: (settings: SystemSettings) => void;
 }
 
 export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
@@ -49,32 +60,48 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
   onClose,
   onUpdateReport,
   onPrintReport,
+  settings = DEFAULT_SETTINGS,
+  onUpdateSettings,
 }) => {
-  if (!report) return null;
+  const gutterOptions = settings.gutterTypes && settings.gutterTypes.length > 0 
+    ? settings.gutterTypes 
+    : DEFAULT_GUTTER_TYPES;
+
+  const damageOptions = settings.damageTypes && settings.damageTypes.length > 0 
+    ? settings.damageTypes 
+    : DEFAULT_DAMAGE_TYPES;
+
+  const [manageModal, setManageModal] = useState<{
+    isOpen: boolean;
+    target: 'gutter' | 'damage';
+  }>({
+    isOpen: false,
+    target: 'gutter',
+  });
 
   const [activeTab, setActiveTab] = useState<'timeline' | 'photos' | 'update' | 'edit'>('timeline');
   const [newLogNote, setNewLogNote] = useState('');
-  const [newLogStatus, setNewLogStatus] = useState<RepairStatus>(report.status);
-  const [newLogActor, setNewLogActor] = useState(report.technicianName || 'Teknisi Lapangan');
+  const [newLogStatus, setNewLogStatus] = useState<RepairStatus>(report?.status || 'dilaporkan');
+  const [newLogActor, setNewLogActor] = useState(report?.technicianName || 'Teknisi Lapangan');
   const [newLogPhotoUrl, setNewLogPhotoUrl] = useState('');
   const [copiedWA, setCopiedWA] = useState(false);
 
   // Edit Form State (allowing editing date, title, location, costs, technician, etc.)
-  const initialParsedDate = parseReportDate(report.createdAt);
-  const initialTimeMatch = report.createdAt.match(/(\d{1,2}):(\d{2})/);
+  const initialParsedDate = parseReportDate(report?.createdAt || '');
+  const initialTimeMatch = (report?.createdAt || '').match(/(\d{1,2}):(\d{2})/);
 
-  const [editTitle, setEditTitle] = useState(report.title);
-  const [editLocation, setEditLocation] = useState(report.location);
-  const [editGutterType, setEditGutterType] = useState<GutterType>(report.gutterType);
-  const [editDamageType, setEditDamageType] = useState<DamageType>(report.damageType);
-  const [editUrgency, setEditUrgency] = useState<UrgencyLevel>(report.urgency);
-  const [editCost, setEditCost] = useState(report.estimatedCost);
-  const [editReporterName, setEditReporterName] = useState(report.reporterName);
-  const [editReporterPhone, setEditReporterPhone] = useState(report.reporterPhone || '');
-  const [editTechnicianName, setEditTechnicianName] = useState(report.technicianName);
-  const [editWarranty, setEditWarranty] = useState(report.warrantyPeriod || '6 Bulan');
-  const [editDamageDesc, setEditDamageDesc] = useState(report.damageDescription);
-  const [editRepairNotes, setEditRepairNotes] = useState(report.repairNotes || '');
+  const [editTitle, setEditTitle] = useState(report?.title || '');
+  const [editLocation, setEditLocation] = useState(report?.location || '');
+  const [editGutterType, setEditGutterType] = useState<GutterType>(report?.gutterType || 'seng_galvalum');
+  const [editDamageType, setEditDamageType] = useState<DamageType>(report?.damageType || 'bocor_retak');
+  const [editUrgency, setEditUrgency] = useState<UrgencyLevel>(report?.urgency || 'darurat');
+  const [editCost, setEditCost] = useState(report?.estimatedCost || 0);
+  const [editReporterName, setEditReporterName] = useState(report?.reporterName || '');
+  const [editReporterPhone, setEditReporterPhone] = useState(report?.reporterPhone || '');
+  const [editTechnicianName, setEditTechnicianName] = useState(report?.technicianName || '');
+  const [editWarranty, setEditWarranty] = useState(report?.warrantyPeriod || '6 Bulan');
+  const [editDamageDesc, setEditDamageDesc] = useState(report?.damageDescription || '');
+  const [editRepairNotes, setEditRepairNotes] = useState(report?.repairNotes || '');
   const [editDate, setEditDate] = useState(initialParsedDate.formattedDate);
   const [editTime, setEditTime] = useState(initialTimeMatch ? `${initialTimeMatch[1].padStart(2, '0')}:${initialTimeMatch[2]}` : '09:00');
   const [editSavedToast, setEditSavedToast] = useState(false);
@@ -99,7 +126,9 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({
       setEditDate(parsed.formattedDate);
       setEditTime(tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '09:00');
     }
-  }, [report.id, report.createdAt]);
+  }, [report?.id, report?.createdAt]);
+
+  if (!report) return null;
 
   const statusCfg = STATUS_CONFIG[report.status];
   const urgencyCfg = URGENCY_LABELS[report.urgency];
@@ -574,6 +603,9 @@ _Sistem Pelaporan Talang Real-Time_`;
                 };
                 onUpdateReport(updated);
               }}
+              onUpdateReport={onUpdateReport}
+              settings={settings}
+              onUpdateSettings={onUpdateSettings}
             />
           )}
 
@@ -806,32 +838,70 @@ _Sistem Pelaporan Talang Real-Time_`;
               {/* SECTION: SPESIFIKASI MATERIAL, KERUSAKAN, URGENSI */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Jenis Material Talang:
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Jenis Material Talang:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setManageModal({ isOpen: true, target: 'gutter' })}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Tambah / Edit</span>
+                    </button>
+                  </div>
                   <select
                     value={editGutterType}
-                    onChange={(e) => setEditGutterType(e.target.value as GutterType)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setManageModal({ isOpen: true, target: 'gutter' });
+                      } else {
+                        setEditGutterType(e.target.value);
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   >
-                    {Object.entries(GUTTER_TYPE_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>{label}</option>
+                    {gutterOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
                     ))}
+                    <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                      + Tambah Jenis Material Baru...
+                    </option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Jenis Masalah Kerusakan:
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Jenis Masalah Kerusakan:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setManageModal({ isOpen: true, target: 'damage' })}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Tambah / Edit</span>
+                    </button>
+                  </div>
                   <select
                     value={editDamageType}
-                    onChange={(e) => setEditDamageType(e.target.value as DamageType)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setManageModal({ isOpen: true, target: 'damage' });
+                      } else {
+                        setEditDamageType(e.target.value);
+                      }
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   >
-                    {Object.entries(DAMAGE_TYPE_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>{label}</option>
+                    {damageOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
                     ))}
+                    <option value="__ADD_NEW__" className="text-blue-600 font-bold">
+                      + Tambah Jenis Kerusakan Baru...
+                    </option>
                   </select>
                 </div>
 
@@ -983,6 +1053,31 @@ _Sistem Pelaporan Talang Real-Time_`;
           </button>
         </div>
       </div>
+
+      {/* Modal Kelola & Tambah Jenis Material / Kerusakan */}
+      <ManageTypesModal
+        isOpen={manageModal.isOpen}
+        onClose={() => setManageModal((prev) => ({ ...prev, isOpen: false }))}
+        typeTarget={manageModal.target}
+        currentItems={manageModal.target === 'gutter' ? gutterOptions : damageOptions}
+        onSave={(updatedList, newlyAddedId) => {
+          if (manageModal.target === 'gutter') {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, gutterTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setEditGutterType(newlyAddedId);
+            }
+          } else {
+            if (onUpdateSettings) {
+              onUpdateSettings({ ...settings, damageTypes: updatedList });
+            }
+            if (newlyAddedId) {
+              setEditDamageType(newlyAddedId);
+            }
+          }
+        }}
+      />
     </div>
   );
 };

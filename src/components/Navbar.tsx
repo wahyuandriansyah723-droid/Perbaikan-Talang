@@ -43,6 +43,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="px-2 py-0.5 text-[11px] font-semibold bg-blue-100 text-blue-700 rounded-full border border-blue-200">
                   Laporan Progres
                 </span>
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200" title="Sinkronisasi online Firebase Firestore Real-Time Aktif">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>Firestore Online</span>
+                </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
                 Monitoring & Pelaporan Perbaikan Talang Air Real-Time

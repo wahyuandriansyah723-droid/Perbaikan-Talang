@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['id', 'code', 'title', 'location', 'gutterType', 'damageType', 'urgency', 'status'])
+        && data.id is string && data.id.size() <= 128
+        && data.code is string && data.code.size() <= 64
+        && data.title is string && data.title.size() <= 300
+        && data.location is string && data.location.size() <= 300
+        && data.gutterType is string && data.gutterType.size() <= 50
+        && data.damageType is string && data.damageType.size() <= 50
+        && data.urgency is string && data.urgency.size() <= 50
+        && data.status is string && data.status.size() <= 50
+        && (!('progressPercentage' in data) || (data.progressPercentage is number && data.progressPercentage >= 0 && data.progressPercentage <= 100))
+        && (!('estimatedCost' in data) || data.estimatedCost is number)
+        && (!('actualCost' in data) || data.actualCost is number)
+        && (!('timeline' in data) || data.timeline is list);
+    }
+
+    // Connection test document
+    match /test/{testId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Reports collection - real-time sync across devices
+    match /reports/{reportId} {
+      allow read: if true;
+      allow create: if isValidId(reportId) && isValidReport(request.resource.data);
+      allow update: if isValidId(reportId) && isValidReport(request.resource.data);
+      allow delete: if isValidId(reportId);
+    }
+
+    // System settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingId);
+      allow delete: if false;
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

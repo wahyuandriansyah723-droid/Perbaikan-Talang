@@ -5,7 +5,9 @@ import {
   URGENCY_LABELS, 
   GUTTER_TYPE_LABELS, 
   DAMAGE_TYPE_LABELS,
-  RepairStatus
+  RepairStatus,
+  getGutterTypeLabel,
+  getDamageTypeLabel
 } from '../types';
 import { 
   MapPin, 
@@ -15,6 +17,7 @@ import {
   CheckCircle2, 
   Clock, 
   Printer,
+  FileDown,
   Layers,
   AlertCircle
 } from 'lucide-react';
@@ -69,7 +72,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({
               {urgencyCfg.label}
             </span>
             <span className="text-[11px] font-medium text-slate-600 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
-              {GUTTER_TYPE_LABELS[report.gutterType]}
+              {getGutterTypeLabel(report.gutterType)}
             </span>
           </div>
           <h3 className="font-extrabold text-slate-900 text-base group-hover:text-blue-600 transition-colors line-clamp-1">
@@ -173,7 +176,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="font-semibold text-slate-800">
-              Masalah: <strong className="text-blue-700">{DAMAGE_TYPE_LABELS[report.damageType]}</strong>
+              Masalah: <strong className="text-blue-700">{getDamageTypeLabel(report.damageType)}</strong>
             </span>
             <span className="text-slate-400 text-[11px] font-mono">
               Garansi: {report.warrantyPeriod || '6 Bulan'}
@@ -211,13 +214,14 @@ export const ReportCard: React.FC<ReportCardProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 w-full sm:w-auto">
-            {/* Print Button */}
+            {/* Tombol Unduh / Cetak PDF Laporan Individu */}
             <button
               onClick={() => onPrintReport(report)}
-              title="Cetak Berita Acara / Laporan PDF"
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
+              title="Unduh / Cetak Laporan Teknis PDF Individu"
+              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 shadow-2xs transition-all flex items-center gap-1.5 active:scale-95"
             >
-              <Printer className="w-4 h-4" />
+              <FileDown className="w-3.5 h-3.5 text-rose-600" />
+              <span>Unduh PDF</span>
             </button>
 
             {/* Quick advance status if not completed */}

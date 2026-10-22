@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "Report": {
+      "title": "Gutter Report",
+      "description": "Talang air damage and repair report document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "location": { "type": "string" },
+        "gutterType": { "type": "string" },
+        "damageType": { "type": "string" },
+        "urgency": { "type": "string" },
+        "status": { "type": "string" },
+        "progressPercentage": { "type": "number" },
+        "reporterName": { "type": "string" },
+        "reporterPhone": { "type": "string" },
+        "technicianName": { "type": "string" },
+        "damageDescription": { "type": "string" },
+        "estimatedCost": { "type": "number" },
+        "actualCost": { "type": "number" },
+        "warrantyPeriod": { "type": "string" },
+        "damagePhotoUrl": { "type": "string" },
+        "repairPhotoUrl": { "type": "string" },
+        "repairNotes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "timeline": { "type": "array" }
+      },
+      "required": ["id", "code", "title", "location", "gutterType", "damageType", "urgency", "status", "reporterName", "damageDescription", "createdAt"]
+    },
+    "Settings": {
+      "title": "System Settings",
+      "description": "Application system and company configuration",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "companyAddress": { "type": "string" },
+        "companyPhone": { "type": "string" },
+        "companyEmail": { "type": "string" },
+        "companyWebsite": { "type": "string" },
+        "defaultWarrantyMonths": { "type": "number" },
+        "picCoordinator": { "type": "string" },
+        "simulationIntervalSec": { "type": "number" },
+        "enableAutoNotifications": { "type": "boolean" },
+        "waTemplate": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Collection of all gutter damage reports"
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "System settings and configuration"
+    },
+    "/test/{testId}": {
+      "schema": "Settings",
+      "description": "Connection test document"
+    }
+  }
+}
