@@ -40,10 +40,12 @@ import {
   X,
   Save,
   Pencil,
-  RotateCcw
+  RotateCcw,
+  Camera
 } from 'lucide-react';
 import { MonthlyReportChart } from './MonthlyReportChart';
 import { DeletePeriodModal } from './DeletePeriodModal';
+import { DeleteReportedModal } from './DeleteReportedModal';
 import { ReportCard } from './ReportCard';
 
 interface ReportDashboardProps {
@@ -55,6 +57,11 @@ interface ReportDashboardProps {
   onDeleteReport: (reportId: string) => void;
   onDeleteReportsBatch?: (reportIds: string[], periodLabel: string) => Promise<void> | void;
   onRestoreReports?: (reports: GutterReport[]) => Promise<void> | void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onOpenPhotoDashboard?: () => void;
 }
 
 export const ReportDashboard: React.FC<ReportDashboardProps> = ({
@@ -66,10 +73,16 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
   onDeleteReport,
   onDeleteReportsBatch,
   onRestoreReports,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
+  onOpenPhotoDashboard,
 }) => {
   // Period filter states
   const [periodType, setPeriodType] = useState<PeriodType>('month');
   const [isBatchPeriodDeleteOpen, setIsBatchPeriodDeleteOpen] = useState(false);
+  const [isReportedBatchDeleteOpen, setIsReportedBatchDeleteOpen] = useState(false);
 
   // Default to today
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -367,14 +380,39 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
           </p>
         </div>
 
-        {/* Action Buttons: Export Excel, PDF, Simpan Rekap & Hapus Periode */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Action Buttons: Undo/Redo, Export Excel, PDF, Laporan Foto, Simpan Rekap & Hapus Periode */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          {/* Tombol Undo & Redo di Dasbor Rekap */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z): Batalkan perubahan terakhir di dasbor/rekap"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-700"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+              <span className="hidden sm:inline">Undo</span>
+            </button>
+            <div className="w-px h-4 bg-slate-300 mx-0.5" />
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Y): Ulangi perubahan yang dibatalkan di dasbor/rekap"
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-700"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-blue-600 scale-x-[-1]" />
+              <span className="hidden sm:inline">Redo</span>
+            </button>
+          </div>
+
           {/* Tombol Simpan Perubahan Rekapitulasi */}
           <button
             type="button"
             onClick={handleSaveRecapChanges}
             disabled={isSavingRecap}
-            className={`flex items-center gap-2 px-4 py-2.5 font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98] ${
+            className={`flex items-center gap-2 px-3.5 py-2.5 font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98] ${
               hasUnsavedChanges
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white ring-2 ring-emerald-400 ring-offset-2 animate-bounce'
                 : savedRecapInfo
@@ -396,14 +434,27 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>Simpan Data Rekap {hasUnsavedChanges ? '(Wajib Simpan)' : ''}</span>
+                <span>Simpan Rekap {hasUnsavedChanges ? '(Wajib Simpan)' : ''}</span>
               </>
             )}
           </button>
 
+          {/* Tombol Akses Dasbor Laporan Foto (Excel/PDF) */}
+          {onOpenPhotoDashboard && (
+            <button
+              type="button"
+              onClick={onOpenPhotoDashboard}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs sm:text-sm rounded-xl border border-emerald-300 transition-all active:scale-[0.98] shadow-2xs"
+              title="Buka Dasbor Laporan Foto Format Excel & PDF"
+            >
+              <Camera className="w-4 h-4 text-emerald-700" />
+              <span>Laporan Foto (Excel/PDF)</span>
+            </button>
+          )}
+
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98]"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98]"
             title="Download data rekapitulasi dalam format Microsoft Excel"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -412,22 +463,35 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
 
           <button
             onClick={handleExportPDF}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98]"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all active:scale-[0.98]"
             title="Cetak atau simpan rekapitulasi sebagai PDF"
           >
             <Printer className="w-4 h-4" />
             <span>Cetak / Ekspor PDF</span>
           </button>
 
-          {(periodType === 'month' || periodType === 'year') && (
+          {/* Tombol Hapus Rekapan Dasbor & Rekap */}
+          <button
+            type="button"
+            onClick={() => setIsBatchPeriodDeleteOpen(true)}
+            disabled={filteredReports.length === 0}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed text-rose-700 font-bold text-xs sm:text-sm rounded-xl border border-rose-200 transition-all active:scale-[0.98] shadow-2xs"
+            title={`Hapus seluruh rekapan data laporan pada periode ${periodLabel}`}
+          >
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span>Hapus Rekapan Dasbor ({filteredReports.length})</span>
+          </button>
+
+          {/* Tombol Hapus Data yang Sudah Dilaporkan */}
+          {filteredReports.some((r) => r.status === 'dilaporkan') && (
             <button
-              onClick={() => setIsBatchPeriodDeleteOpen(true)}
-              disabled={filteredReports.length === 0}
-              className="flex items-center gap-2 px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed text-rose-700 font-bold text-xs sm:text-sm rounded-xl border border-rose-200 transition-all active:scale-[0.98]"
-              title={`Hapus seluruh laporan pada ${periodLabel}`}
+              type="button"
+              onClick={() => setIsReportedBatchDeleteOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs sm:text-sm rounded-xl border border-amber-300 transition-all active:scale-[0.98] shadow-2xs"
+              title={`Hapus data laporan yang berstatus 'Dilaporkan' pada periode ${periodLabel}`}
             >
-              <Trash2 className="w-4 h-4 text-rose-600" />
-              <span>Hapus Data {periodType === 'month' ? 'Bulan Ini' : 'Tahun Ini'} ({filteredReports.length})</span>
+              <Trash2 className="w-4 h-4 text-amber-700" />
+              <span>Hapus Data Dilaporkan ({filteredReports.filter((r) => r.status === 'dilaporkan').length})</span>
             </button>
           )}
         </div>
@@ -828,6 +892,18 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
               </button>
             </div>
 
+            {totalReports > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsBatchPeriodDeleteOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition-colors shadow-2xs"
+                title={`Hapus seluruh ${totalReports} rekapan data periode ${periodLabel}`}
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Hapus Rekapan ({totalReports})</span>
+              </button>
+            )}
+
             <div className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
               {totalReports} Data Terdaftar
             </div>
@@ -844,6 +920,7 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
                   onOpenDetail={onOpenReportDetail}
                   onQuickAdvanceStatus={handleQuickAdvance}
                   onPrintReport={onPrintSingleReport}
+                  onDeleteReport={(r) => setDeletingReport(r)}
                 />
               ))}
             </div>
@@ -1239,6 +1316,32 @@ export const ReportDashboard: React.FC<ReportDashboardProps> = ({
           const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
           setRecentDeletedBatch({
             periodLabel,
+            reports: reportsBackup,
+            deletedAt: timeFormatted,
+          });
+          setHasUnsavedChanges(true);
+          setSavedRecapInfo(null);
+        }}
+      />
+
+      {/* Modal Hapus Data yang Sudah Dilaporkan di Dasbor */}
+      <DeleteReportedModal
+        isOpen={isReportedBatchDeleteOpen}
+        onClose={() => setIsReportedBatchDeleteOpen(false)}
+        reports={filteredReports}
+        onConfirmDelete={async (ids) => {
+          const reportsBackup = filteredReports.filter((r) => ids.includes(r.id));
+          if (onDeleteReportsBatch) {
+            await onDeleteReportsBatch(ids, `Data Dilaporkan (${ids.length} tiket)`);
+          } else {
+            for (const id of ids) {
+              onDeleteReport(id);
+            }
+          }
+          const now = new Date();
+          const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} WIB`;
+          setRecentDeletedBatch({
+            periodLabel: `Data Dilaporkan (${ids.length} tiket)`,
             reports: reportsBackup,
             deletedAt: timeFormatted,
           });

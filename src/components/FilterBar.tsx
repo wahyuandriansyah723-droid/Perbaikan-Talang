@@ -26,6 +26,8 @@ interface FilterBarProps {
   onClearFilters: () => void;
   totalResults: number;
   onDeleteFilteredPeriod?: () => void;
+  reportedCount?: number;
+  onDeleteReportedData?: () => void;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -50,6 +52,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onClearFilters,
   totalResults,
   onDeleteFilteredPeriod,
+  reportedCount,
+  onDeleteReportedData,
 }) => {
   const hasActiveFilters = 
     searchQuery.trim() !== '' || 
@@ -208,15 +212,30 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
           {/* Period Bulk Delete & Clear Filter buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {(datePeriodType === 'month' || datePeriodType === 'year') && totalResults > 0 && onDeleteFilteredPeriod && (
+            {totalResults > 0 && onDeleteFilteredPeriod && (
               <button
                 type="button"
                 onClick={onDeleteFilteredPeriod}
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl border border-rose-200 transition-colors shadow-2xs"
-                title={`Hapus seluruh ${totalResults} data pada ${datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`}`}
+                title={`Hapus seluruh ${totalResults} tiket laporan yang tampil`}
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Hapus {totalResults} Data ({datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`})</span>
+                <span>
+                  Hapus {totalResults} Tiket Lapangan
+                  {datePeriodType === 'month' ? ` (${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear})` : datePeriodType === 'year' ? ` (${selectedYear})` : ''}
+                </span>
+              </button>
+            )}
+
+            {reportedCount !== undefined && reportedCount > 0 && onDeleteReportedData && (
+              <button
+                type="button"
+                onClick={onDeleteReportedData}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-300 transition-colors shadow-2xs"
+                title="Hapus data yang sudah dilaporkan (status: Dilaporkan)"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-700" />
+                <span>Hapus Data Dilaporkan ({reportedCount})</span>
               </button>
             )}
 

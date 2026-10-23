@@ -19,7 +19,8 @@ import {
   Printer,
   FileDown,
   Layers,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 
 interface ReportCardProps {
@@ -27,6 +28,7 @@ interface ReportCardProps {
   onOpenDetail: (report: GutterReport) => void;
   onQuickAdvanceStatus: (report: GutterReport) => void;
   onPrintReport: (report: GutterReport) => void;
+  onDeleteReport?: (report: GutterReport) => void;
 }
 
 export const ReportCard: React.FC<ReportCardProps> = ({
@@ -34,6 +36,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({
   onOpenDetail,
   onQuickAdvanceStatus,
   onPrintReport,
+  onDeleteReport,
 }) => {
   const statusCfg = STATUS_CONFIG[report.status];
   const urgencyCfg = URGENCY_LABELS[report.urgency];
@@ -74,6 +77,19 @@ export const ReportCard: React.FC<ReportCardProps> = ({
             <span className="text-[11px] font-medium text-slate-600 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
               {getGutterTypeLabel(report.gutterType)}
             </span>
+            {onDeleteReport && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteReport(report);
+                }}
+                title="Hapus Tiket Ini"
+                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors ml-auto sm:ml-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <h3 className="font-extrabold text-slate-900 text-base group-hover:text-blue-600 transition-colors line-clamp-1">
             {report.title}
@@ -223,6 +239,21 @@ export const ReportCard: React.FC<ReportCardProps> = ({
               <FileDown className="w-3.5 h-3.5 text-rose-600" />
               <span>Unduh PDF</span>
             </button>
+
+            {/* Tombol Hapus Tiket */}
+            {onDeleteReport && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteReport(report);
+                }}
+                title="Hapus Tiket Laporan Ini"
+                className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200 transition-all flex items-center justify-center active:scale-95 shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* Quick advance status if not completed */}
             {nextActionLabel && (

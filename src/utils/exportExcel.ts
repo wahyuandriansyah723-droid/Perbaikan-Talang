@@ -92,3 +92,54 @@ export function exportReportsToExcel(
 
   XLSX.writeFile(workbook, filename);
 }
+
+export function exportPhotoReportToExcel(
+  reports: GutterReport[],
+  periodTitle: string = 'Semua Periode'
+) {
+  const dataRows = reports.map((r, index) => ({
+    'No': index + 1,
+    'Kode Tiket': r.code,
+    'Tanggal': r.createdAt,
+    'Titik Talang': r.title,
+    'Alamat Lokasi': r.location,
+    'Material Talang': getGutterTypeLabel(r.gutterType),
+    'Masalah Kerusakan': getDamageTypeLabel(r.damageType),
+    'Status Progres': `${STATUS_CONFIG[r.status]?.label || r.status} (${r.progressPercentage}%)`,
+    'Foto Kondisi Sebelum (URL)': r.damagePhotoUrl,
+    'Foto Hasil Sesudah (URL)': r.repairPhotoUrl || 'Belum Ada Foto Hasil',
+    'Analisa / Deskripsi Kerusakan': r.damageDescription,
+    'Tindakan Perbaikan & Uji Siram': r.repairNotes || '-',
+    'Estimasi Biaya (Rp)': r.estimatedCost,
+    'Garansi': r.warrantyPeriod || '-',
+    'Teknisi Penanggung Jawab': r.technicianName,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(dataRows);
+
+  worksheet['!cols'] = [
+    { wch: 6 },  // No
+    { wch: 15 }, // Kode
+    { wch: 22 }, // Tanggal
+    { wch: 30 }, // Titik
+    { wch: 35 }, // Alamat
+    { wch: 20 }, // Material
+    { wch: 25 }, // Masalah
+    { wch: 22 }, // Status
+    { wch: 45 }, // Foto Sebelum
+    { wch: 45 }, // Foto Sesudah
+    { wch: 40 }, // Deskripsi
+    { wch: 40 }, // Tindakan
+    { wch: 20 }, // Biaya
+    { wch: 15 }, // Garansi
+    { wch: 22 }, // Teknisi
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Dokumentasi Foto');
+
+  const cleanPeriod = periodTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filename = `Laporan_Foto_Talang_Excel_${cleanPeriod}.xlsx`;
+
+  XLSX.writeFile(workbook, filename);
+}

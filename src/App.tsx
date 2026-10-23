@@ -13,6 +13,8 @@ import { ReportDashboard } from './components/ReportDashboard';
 import { PrintSummaryReportView } from './components/PrintSummaryReportView';
 import { SettingsDashboard } from './components/SettingsDashboard';
 import { DeletePeriodModal } from './components/DeletePeriodModal';
+import { DeleteReportedModal } from './components/DeleteReportedModal';
+import { PhotoReportSheetDashboard } from './components/PhotoReportSheetDashboard';
 import { 
   Plus, 
   Wrench, 
@@ -26,7 +28,8 @@ import {
   ClipboardList,
   Settings,
   Cloud,
-  Trash2
+  Trash2,
+  Camera
 } from 'lucide-react';
 import {
   subscribeToReports,
@@ -45,8 +48,12 @@ export default function App() {
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
 
-  // Active view: 'list' (Tiket Lapangan) | 'dashboard' (Dasbor & Rekap Periode) | 'settings' (Pengaturan Sistem)
-  const [activeView, setActiveView] = useState<'list' | 'dashboard' | 'settings'>('list');
+  // Undo & Redo History Stacks
+  const [historyPast, setHistoryPast] = useState<GutterReport[][]>([]);
+  const [historyFuture, setHistoryFuture] = useState<GutterReport[][]>([]);
+
+  // Active view: 'list' (Tiket Lapangan) | 'dashboard' (Dasbor & Rekap Periode) | 'photos' (Laporan Foto Excel/PDF) | 'settings' (Pengaturan Sistem)
+  const [activeView, setActiveView] = useState<'list' | 'dashboard' | 'photos' | 'settings'>('list');
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +77,8 @@ export default function App() {
   const [selectedReportForPrint, setSelectedReportForPrint] = useState<GutterReport | null>(null);
   const [summaryPrintData, setSummaryPrintData] = useState<{ reports: GutterReport[]; periodLabel: string } | null>(null);
   const [isFilterBarPeriodDeleteOpen, setIsFilterBarPeriodDeleteOpen] = useState(false);
+  const [isDeleteReportedModalOpen, setIsDeleteReportedModalOpen] = useState(false);
+  const [reportToDeleteInField, setReportToDeleteInField] = useState<GutterReport | null>(null);
 
   // Real-time live simulation mode state & toast notification
   const [isSimulating, setIsSimulating] = useState(false);
@@ -201,8 +210,83 @@ export default function App() {
     }
   }, [liveToast]);
 
+  // Track snapshots for Undo & Redo
+  const recordHistory = (currentReports: GutterReport[]) => {
+    setHistoryPast((prev) => [...prev.slice(-25), [...currentReports]]);
+    setHistoryFuture([]); // clear redo stack on new action
+  };
+
+  const handleUndo = async () => {
+    if (historyPast.length === 0) return;
+    const previousState = historyPast[historyPast.length - 1];
+    const newPast = historyPast.slice(0, -1);
+
+    setHistoryFuture((prev) => [...prev, [...reports]]);
+    setHistoryPast(newPast);
+    setReports(previousState);
+
+    try {
+      await restoreReportsToFirestore(previousState);
+      setLiveToast({
+        message: `Undo berhasil: Data laporan dikembalikan ke kondisi sebelumnya (${previousState.length} tiket).`,
+        code: 'UNDO_SUCCESS',
+      });
+    } catch (err) {
+      console.error('Failed to sync undo state to Firestore:', err);
+    }
+  };
+
+  const handleRedo = async () => {
+    if (historyFuture.length === 0) return;
+    const nextState = historyFuture[historyFuture.length - 1];
+    const newFuture = historyFuture.slice(0, -1);
+
+    setHistoryPast((prev) => [...prev, [...reports]]);
+    setHistoryFuture(newFuture);
+    setReports(nextState);
+
+    try {
+      await restoreReportsToFirestore(nextState);
+      setLiveToast({
+        message: `Redo berhasil: Perubahan dipulihkan kembali (${nextState.length} tiket).`,
+        code: 'REDO_SUCCESS',
+      });
+    } catch (err) {
+      console.error('Failed to sync redo state to Firestore:', err);
+    }
+  };
+
+  // Keyboard shortcut listener for Ctrl+Z / Cmd+Z (Undo) and Ctrl+Y / Cmd+Shift+Z (Redo)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Do not trigger global undo/redo when actively typing in text inputs or textareas
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        activeEl.tagName === 'TEXTAREA' || 
+        (activeEl as HTMLElement).isContentEditable
+      );
+      if (isInput) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (
+        (e.ctrlKey || e.metaKey) && 
+        (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))
+      ) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyPast, historyFuture, reports]);
+
   // CRUD Handlers - All synchronized directly with Firebase Firestore
   const handleCreateNewReport = async (newReport: GutterReport) => {
+    recordHistory(reports);
     try {
       await saveReportToFirestore(newReport);
       setLiveToast({
@@ -215,6 +299,7 @@ export default function App() {
   };
 
   const handleUpdateReport = async (updated: GutterReport) => {
+    recordHistory(reports);
     try {
       await saveReportToFirestore(updated);
       setSelectedReportForDetail((curr) => curr && curr.id === updated.id ? updated : curr);
@@ -229,11 +314,12 @@ export default function App() {
 
   const handleDeleteReport = async (reportId: string) => {
     const target = reports.find(r => r.id === reportId);
+    recordHistory(reports);
     try {
       await deleteReportFromFirestore(reportId);
       if (target) {
         setLiveToast({
-          message: `Laporan ${target.code} (${target.title}) dihapus dari database online.`,
+          message: `Laporan ${target.code} (${target.title}) dihapus dari database online. Tekan Undo (Ctrl+Z) jika ingin membatalkan.`,
           code: target.code,
         });
       }
@@ -244,10 +330,11 @@ export default function App() {
 
   const handleDeleteReportsBatch = async (reportIds: string[], periodLabel: string) => {
     if (!reportIds || reportIds.length === 0) return;
+    recordHistory(reports);
     try {
       await deleteReportsBatch(reportIds);
       setLiveToast({
-        message: `Berhasil menghapus ${reportIds.length} data laporan periode ${periodLabel} dari Firebase Firestore.`,
+        message: `Berhasil menghapus ${reportIds.length} data laporan periode ${periodLabel} dari Firebase Firestore. Anda dapat menggunakan Undo jika diperlukan.`,
         code: 'HAPUS_PERIODE',
       });
     } catch (e) {
@@ -256,6 +343,7 @@ export default function App() {
   };
 
   const handleQuickAdvanceStatus = async (report: GutterReport) => {
+    recordHistory(reports);
     let nextStatus: RepairStatus = report.status;
     let note = '';
 
@@ -387,6 +475,10 @@ export default function App() {
         }}
         activeView={activeView}
         onChangeView={setActiveView}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyPast.length > 0}
+        canRedo={historyFuture.length > 0}
       />
 
       {/* Main Container */}
@@ -402,7 +494,7 @@ export default function App() {
               Pantau Kerusakan & Progres Perbaikan Talang Air
             </h1>
             <p className="text-xs sm:text-sm text-blue-200/90 max-w-2xl">
-              Sinkronisasi online Firebase Firestore real-time: input foto sebelum-sesudah, pencarian tiket per hari/bulan/tahun, rekapitulasi, dan ekspor dokumen.
+              Sinkronisasi online Firebase Firestore real-time: input foto sebelum-sesudah, pencarian tiket per hari/bulan/tahun, rekapitulasi, dasbor foto spreadsheet Excel & katalog cetak PDF.
             </p>
           </div>
 
@@ -416,7 +508,20 @@ export default function App() {
               }`}
             >
               <BarChart3 className="w-4 h-4 text-cyan-300" />
-              <span>{activeView === 'dashboard' ? 'Kembali ke Tiket' : 'Dasbor & Grafik'}</span>
+              <span>{activeView === 'dashboard' ? 'Kembali ke Tiket' : 'Dasbor & Rekap'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveView(activeView === 'photos' ? 'list' : 'photos')}
+              className={`px-3 py-2 text-white font-bold text-xs sm:text-sm rounded-xl border shadow-xs transition-all flex items-center gap-1.5 ${
+                activeView === 'photos'
+                  ? 'bg-emerald-600 border-emerald-300 ring-2 ring-emerald-300/40'
+                  : 'bg-emerald-800/80 hover:bg-emerald-700 border-emerald-400/30'
+              }`}
+              title="Dasbor Laporan Foto format Excel & PDF"
+            >
+              <Camera className="w-4 h-4 text-emerald-300" />
+              <span>{activeView === 'photos' ? 'Kembali ke Tiket' : 'Laporan Foto'}</span>
             </button>
 
             <button
@@ -460,6 +565,85 @@ export default function App() {
         {/* VIEW 1: TIKET LAPANGAN (CARDS & FILTERS) */}
         {activeView === 'list' && (
           <div className="space-y-6">
+            {/* Action Bar Khusus Tiket Lapangan: Undo, Redo, Shortcut Dasbor Foto & Rekap */}
+            <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    disabled={historyPast.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title="Undo (Ctrl+Z): Batalkan aksi atau kembalikan tiket lapangan yang terhapus/berubah"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Undo</span>
+                    <span className="hidden sm:inline text-[10px] text-slate-400 font-mono font-normal">Ctrl+Z</span>
+                    {historyPast.length > 0 && (
+                      <span className="px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded-full text-[10px] font-bold">
+                        {historyPast.length}
+                      </span>
+                    )}
+                  </button>
+                  <div className="w-px h-4 bg-slate-300 mx-1" />
+                  <button
+                    type="button"
+                    onClick={handleRedo}
+                    disabled={historyFuture.length === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    title="Redo (Ctrl+Y): Ulangi kembali perubahan tiket lapangan yang dibatalkan"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-blue-600 scale-x-[-1]" />
+                    <span>Redo</span>
+                    <span className="hidden sm:inline text-[10px] text-slate-400 font-mono font-normal">Ctrl+Y</span>
+                    {historyFuture.length > 0 && (
+                      <span className="px-1.5 py-0.2 bg-purple-100 text-purple-800 rounded-full text-[10px] font-bold">
+                        {historyFuture.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+                <span className="text-xs text-slate-500 hidden lg:inline">
+                  {historyPast.length > 0 
+                    ? `Tersedia ${historyPast.length} histori Undo di Tiket Lapangan`
+                    : 'Riwayat siap merekam aksi tiket lapangan'}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Tombol Hapus Data yang Sudah Dilaporkan */}
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteReportedModalOpen(true)}
+                  disabled={reports.filter((r) => r.status === 'dilaporkan').length === 0}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all active:scale-95 shadow-2xs"
+                  title="Hapus data tiket yang berstatus 'Dilaporkan' (belum diproses)"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Hapus Data yang Sudah Dilaporkan ({reports.filter((r) => r.status === 'dilaporkan').length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveView('photos')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-all active:scale-95 shadow-2xs"
+                  title="Buka Dasbor Laporan Foto format Excel & PDF"
+                >
+                  <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Dasbor Foto (Excel/PDF)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('dashboard')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold rounded-xl transition-all active:scale-95 shadow-2xs"
+                  title="Buka Dasbor & Rekapitulasi Periode"
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-blue-700" />
+                  <span>Rekap Bulanan</span>
+                </button>
+              </div>
+            </div>
+
             {/* Stats Metric Cards */}
             <StatsCards
               reports={reports}
@@ -490,6 +674,8 @@ export default function App() {
               onClearFilters={handleClearFilters}
               totalResults={filteredReports.length}
               onDeleteFilteredPeriod={() => setIsFilterBarPeriodDeleteOpen(true)}
+              reportedCount={reports.filter((r) => r.status === 'dilaporkan').length}
+              onDeleteReportedData={() => setIsDeleteReportedModalOpen(true)}
             />
 
             {/* Reports Grid */}
@@ -502,6 +688,7 @@ export default function App() {
                     onOpenDetail={setSelectedReportForDetail}
                     onQuickAdvanceStatus={handleQuickAdvanceStatus}
                     onPrintReport={setSelectedReportForPrint}
+                    onDeleteReport={(r) => setReportToDeleteInField(r)}
                   />
                 ))}
               </div>
@@ -535,14 +722,88 @@ export default function App() {
               </div>
             )}
 
+            {/* Modal Konfirmasi Hapus Tiket Tunggal Lapangan */}
+            {reportToDeleteInField && (
+              <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 text-slate-900 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                      <Trash2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-slate-900">
+                        Hapus Tiket Lapangan?
+                      </h3>
+                      <p className="text-xs text-slate-500 font-mono">
+                        Kode: {reportToDeleteInField.code}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-rose-50/70 rounded-xl border border-rose-200 text-xs text-rose-800 space-y-1">
+                    <p className="font-bold">
+                      Apakah Anda yakin ingin menghapus tiket laporan ini?
+                    </p>
+                    <p className="text-slate-700">
+                      Titik: <strong>{reportToDeleteInField.title}</strong>
+                    </p>
+                    <p className="text-slate-500 text-[11px]">
+                      Lokasi: {reportToDeleteInField.location}
+                    </p>
+                    <p className="text-[11px] text-rose-600 font-medium pt-1">
+                      ⚠️ Tiket yang dihapus dapat dipulihkan kapan saja dengan menekan tombol <strong>Undo (Ctrl+Z)</strong>.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setReportToDeleteInField(null)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const target = reportToDeleteInField;
+                        setReportToDeleteInField(null);
+                        if (target) {
+                          await handleDeleteReport(target.id);
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Ya, Hapus Tiket Ini</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Modal Hapus Periode dari FilterBar Tiket Lapangan */}
             <DeletePeriodModal
               isOpen={isFilterBarPeriodDeleteOpen}
               onClose={() => setIsFilterBarPeriodDeleteOpen(false)}
-              periodLabel={datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`}
+              periodLabel={
+                datePeriodType === 'month' 
+                  ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` 
+                  : datePeriodType === 'year' 
+                  ? `Tahun ${selectedYear}`
+                  : datePeriodType === 'day'
+                  ? `Tanggal ${selectedDate}`
+                  : 'Tiket Terfilter'
+              }
               reportsToDelete={filteredReports}
               onConfirmDelete={async () => {
-                const label = datePeriodType === 'month' ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` : `Tahun ${selectedYear}`;
+                const label = datePeriodType === 'month' 
+                  ? `${INDONESIAN_MONTHS[selectedMonth - 1]} ${selectedYear}` 
+                  : datePeriodType === 'year' 
+                  ? `Tahun ${selectedYear}`
+                  : datePeriodType === 'day'
+                  ? `Tanggal ${selectedDate}`
+                  : 'Tiket Terfilter';
                 await handleDeleteReportsBatch(filteredReports.map((r) => r.id), label);
               }}
             />
@@ -560,10 +821,25 @@ export default function App() {
             onDeleteReport={handleDeleteReport}
             onDeleteReportsBatch={handleDeleteReportsBatch}
             onRestoreReports={handleRestoreReports}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={historyPast.length > 0}
+            canRedo={historyFuture.length > 0}
+            onOpenPhotoDashboard={() => setActiveView('photos')}
           />
         )}
 
-        {/* VIEW 3: DASBOR PENGATURAN SISTEM */}
+        {/* VIEW 3: DASBOR LAPORAN FOTO (EXCEL & PDF) */}
+        {activeView === 'photos' && (
+          <PhotoReportSheetDashboard
+            reports={reports}
+            settings={settings}
+            onOpenReportDetail={setSelectedReportForDetail}
+            onPrintSingleReport={setSelectedReportForPrint}
+          />
+        )}
+
+        {/* VIEW 4: DASBOR PENGATURAN SISTEM */}
         {activeView === 'settings' && (
           <SettingsDashboard
             settings={settings}
@@ -608,6 +884,7 @@ export default function App() {
           report={selectedReportForDetail}
           onClose={() => setSelectedReportForDetail(null)}
           onUpdateReport={handleUpdateReport}
+          onDeleteReport={handleDeleteReport}
           onPrintReport={(rep) => {
             setSelectedReportForDetail(null);
             setSelectedReportForPrint(rep);
@@ -644,6 +921,16 @@ export default function App() {
           settings={settings}
         />
       )}
+
+      {/* Modal Hapus Data yang Sudah Dilaporkan */}
+      <DeleteReportedModal
+        isOpen={isDeleteReportedModalOpen}
+        onClose={() => setIsDeleteReportedModalOpen(false)}
+        reports={reports}
+        onConfirmDelete={async (reportIds) => {
+          await handleDeleteReportsBatch(reportIds, 'Status Dilaporkan');
+        }}
+      />
 
       {/* Footer */}
       <footer className="mt-12 border-t border-slate-200/80 bg-white py-6 text-center text-xs text-slate-500">

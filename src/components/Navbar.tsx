@@ -14,8 +14,12 @@ interface NavbarProps {
   isSimulating: boolean;
   onToggleSimulation: () => void;
   onResetData: () => void;
-  activeView: 'list' | 'dashboard' | 'settings';
-  onChangeView: (view: 'list' | 'dashboard' | 'settings') => void;
+  activeView: 'list' | 'dashboard' | 'photos' | 'settings';
+  onChangeView: (view: 'list' | 'dashboard' | 'photos' | 'settings') => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -25,6 +29,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onResetData,
   activeView,
   onChangeView,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
@@ -54,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Center Tabs: List vs Dashboard vs Settings */}
+          {/* Center Tabs: List vs Dashboard vs Photos vs Settings */}
           <div className="hidden md:flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
             <button
               onClick={() => onChangeView('list')}
@@ -79,6 +87,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Dasbor & Rekap</span>
             </button>
             <button
+              onClick={() => onChangeView('photos')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                activeView === 'photos'
+                  ? 'bg-white text-emerald-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Dasbor Laporan Foto format Excel & PDF"
+            >
+              <span className="flex items-center justify-center w-4 h-4 rounded bg-emerald-100 text-emerald-700 text-[10px] font-black">
+                📷
+              </span>
+              <span>Laporan Foto (Excel/PDF)</span>
+            </button>
+            <button
               onClick={() => onChangeView('settings')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                 activeView === 'settings'
@@ -92,7 +114,29 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* UNDO & REDO CONTROLS */}
+            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z): Batalkan perubahan terakhir"
+                className="p-1.5 text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-700"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo (Ctrl+Y): Ulangi perubahan yang dibatalkan"
+                className="p-1.5 text-slate-700 hover:text-blue-700 hover:bg-white rounded-lg transition-all disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-700 scale-x-[-1]"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* Live Simulation Indicator & Toggle */}
             <button
               onClick={onToggleSimulation}
@@ -134,39 +178,50 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile View Switcher Sub-bar */}
-        <div className="md:hidden flex items-center justify-center p-1 pb-2 border-t border-slate-100 gap-1.5">
+        <div className="md:hidden flex items-center justify-center p-1 pb-2 border-t border-slate-100 gap-1">
           <button
             onClick={() => onChangeView('list')}
-            className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
+            className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
               activeView === 'list'
                 ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
                 : 'bg-white text-slate-600 border-slate-200'
             }`}
           >
-            <ClipboardList className="w-3.5 h-3.5" />
+            <ClipboardList className="w-3 h-3" />
             <span>Tiket</span>
           </button>
           <button
             onClick={() => onChangeView('dashboard')}
-            className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
+            className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
               activeView === 'dashboard'
                 ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
                 : 'bg-white text-slate-600 border-slate-200'
             }`}
           >
-            <BarChart3 className="w-3.5 h-3.5" />
+            <BarChart3 className="w-3 h-3" />
             <span>Rekap</span>
           </button>
           <button
+            onClick={() => onChangeView('photos')}
+            className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
+              activeView === 'photos'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                : 'bg-white text-slate-600 border-slate-200'
+            }`}
+          >
+            <span>📷</span>
+            <span>Foto</span>
+          </button>
+          <button
             onClick={() => onChangeView('settings')}
-            className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
+            className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 border ${
               activeView === 'settings'
                 ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
                 : 'bg-white text-slate-600 border-slate-200'
             }`}
           >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Pengaturan</span>
+            <Settings className="w-3 h-3" />
+            <span>Atur</span>
           </button>
         </div>
       </div>
